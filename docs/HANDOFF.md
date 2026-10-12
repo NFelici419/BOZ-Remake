@@ -22,7 +22,8 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 **Authoritative documents:**
 - Design spec: [`docs/superpowers/specs/2026-10-11-boz-remake-design.md`](superpowers/specs/2026-10-11-boz-remake-design.md)
 - Milestone 1 plan (done): [`docs/superpowers/plans/2026-10-11-m1-converter-basics.md`](superpowers/plans/2026-10-11-m1-converter-basics.md)
-- **Milestone 2a plan (next to execute):** [`docs/superpowers/plans/2026-10-12-m2a-kino-geometry-export.md`](superpowers/plans/2026-10-12-m2a-kino-geometry-export.md)
+- Milestone 2a plan (done, PR open): [`docs/superpowers/plans/2026-10-12-m2a-kino-geometry-export.md`](superpowers/plans/2026-10-12-m2a-kino-geometry-export.md)
+- **Milestone 2b plan:** not written yet (next step, see §8).
 
 ---
 
@@ -31,11 +32,11 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 | Milestone | State |
 |---|---|
 | 1. Converter basics (unpack `.dz`, parse groups, coverage report) | **Done.** Merged to `master` as PR #1. 34 tests passing. |
-| 2a. Kino geometry export → glTF | **Planned, not started.** Plan written, committed and pushed (`20699e6`). All format facts verified against real data. |
+| 2a. Kino geometry export → glTF | **Done** on branch `m2a-kino-geometry-export`, PR open against `master` (merge pending). 93 tests passing. `export-kino` writes 349/351 placed room models, 75,249 triangles, 169 textures, 0 failures. |
 | 2b. Godot project + controller walk-around + Retroid build | Not planned yet. Godot isn't installed. |
 | 3–6. Core combat, economy, Kino features, polish | Not started (see spec §10). |
 
-**Pending decision from the owner:** the execution method for the 2a plan. Native (inline, one final review) was recommended and was used for milestone 1. Ask before starting.
+**Pending from the owner:** merge the 2a PR. Its final review was a self-review (no fresh reviewer agent was dispatched); the owner can ask for an independent review before merging.
 
 ---
 
@@ -45,7 +46,7 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 |---|---|
 | Project repo | `D:\Documents\BOZ-Remake` |
 | Converter (TypeScript, Node 24) | `D:\Documents\BOZ-Remake\converter` |
-| Converter output (gitignored) | `converter/out/`: `unpacked/`, `manifest.json`, `report.json`, `report.html` |
+| Converter output (gitignored) | `converter/out/`: `unpacked/`, `manifest.json`, `report.json`, `report.html`, `kino/` (`kino.gltf`, `kino.bin`, `textures/*.png`), `preview/` (one-off check renders) |
 | Local config (gitignored) | `converter/local.json` (copy of `local.example.json`) |
 | **Original game data (read-only, never commit)** | `D:\Documents\COD-BOZ-Partially-Decompiled-master\retroid-backup\` |
 | → primary data pack (PC-ready DXT textures) | `blackops_dxt.dz` (341,884,481 bytes) |
@@ -65,13 +66,12 @@ The data packs were downloaded from Activision's still-live CDN: `http://cdn-boz
 ```bash
 cd /d/Documents/BOZ-Remake/converter
 npm install
-npm test               # 34 tests; real-data tests run when local.json exists
+npm test               # 93 tests; real-data tests run when local.json exists
 npm run typecheck
 npm run boz -- unpack  # Kino files -> out/unpacked (47 entries)
-npm run boz -- report  # out/report.json + out/report.html (46 groups, 0 failed)
+npm run boz -- report  # out/report.json + out/report.html (46 groups, 0 failed; 4102 decoded, 5 weapon models fail)
+npm run boz -- export-kino  # out/kino/kino.gltf + kino.bin + textures/*.png
 ```
-
-Milestone 2a adds `npm run boz -- export-kino` → `out/kino/kino.gltf`.
 
 ---
 
@@ -92,7 +92,12 @@ Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In
   - UVs are s16 / 4096. Triangle lists carry a material index.
   - All 665 Kino models decode byte-exactly.
 - **Placement:** `CIsEntitySpec` is self-describing reflection data (`"LFER"` blocks with typed, named fields). `CIsTransform.m_localPosition` / `m_localRotation` place each room; entity name hash == model name hash. 349/351 room models are placed, and the assembled map forms a coherent floor plan.
-- **Axes:** +Y is up. **Provisional** (confirm by eye in 2b): `POSITION_SCALE = 0.01`, `MIRROR_X = false`.
+- **Axes:** +Y is up (confirmed by a side render of the export). **Provisional** (confirm by eye in 2b): `POSITION_SCALE = 0.01` (map ≈ 135 × 156 m, 37 m tall), `MIRROR_X = false`. Both are single constants in `converter/src/kino-export.ts`.
+- **Learned while building 2a** (corrections to the plan's format facts):
+  - **Entity components** all share a 16-byte header `specClass, ?, componentClass, size`. Only `CIsComponentSpec` blocks are LFER field lists; `kino_statics` CIsEntitySpec#0 has a `CIsCollisionMeshSpec` followed by a ~6 MB Bullet physics blob (future collision source). 728 entities have a transform (725 unique names).
+  - **Cubemaps:** the outer GL header's mip table describes one face; `recordSize = 72 + 6 × (72 + Σmips)`, each face its own 72-byte GL record. Unused mip-table slots hold junk that looks like pixels.
+  - **Textures:** 859 decode, 1 cubemap, 26 unsupported (format byte 0x00 ×6, 0x1b ×1, raw byte18 0x0e ×19).
+  - **Weapon models:** 5 `weapons_kino` CIwModels (#3, #5, #6, #239, #242) have a different tail after the last block. Investigate in the weapons milestone.
 - **Useful classes for later milestones** (all present in Kino's data): `CZombieConfiguration`, `CWave`, `CScoreConfig`, `CLevel`, `CArea`, `CIsNavMesh`, `CTeleportSpawnConfig`, `CIsPortal`/`CIsOccluder`, `CIwAnim`/`CIwAnimSkel`/`CIwAnimSkin`, `CIwSoundData`.
 
 ---
@@ -134,13 +139,17 @@ Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In
 
 ## 8. Next steps
 
-1. **Ask the owner for the 2a execution method** (Native recommended). Then create branch `m2a-kino-geometry-export` from `master` and execute the 2a plan task by task with TDD, ledger and final review, as in milestone 1.
-2. After 2a: push the branch and give the owner the PR compare URL.
-3. **Plan 2b:**
+1. Owner merges the 2a PR (`m2a-kino-geometry-export` → `master`).
+2. **Plan 2b:**
    - Install Godot 4 (needs download permission; the owner approves downloads individually, with file, source and size).
    - Import `kino.gltf` and confirm `POSITION_SCALE` / `MIRROR_X` by eye.
    - Add a first-person controller with gamepad input.
    - Export to Android and install on the Retroid over adb.
+   - Decide, once viewed in Godot (deferred from 2a):
+     - **Lightmaps** are exported as glTF `occlusionTexture` on UV1; Godot treats that as ambient-only AO, so rooms won't look lit yet. Pick the real lightmap path (e.g. a custom shader multiplying UV1).
+     - **Alpha:** all materials are OPAQUE; grates and other cut-out textures need alphaMode MASK/BLEND.
+     - Vertex colours (`CIwModelBlockCols`) and normals aren't exported; 379 of the 665 Kino models have no lightmap UVs and may look flat.
+   - Small cleanups left from the 2a review: `decodeRgba4444` should check pitch ≥ 2×width; `decodeModel` could require triangle index counts divisible by 3; `readGroups` could move from `report.ts` to `dz.ts`.
 
 ---
 
@@ -148,5 +157,5 @@ Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In
 
 - Wants **progress updates** during long work, and plain-language explanations.
 - Approves big downloads and installs explicitly, and has been happy to say yes when given the exact file, source and size.
-- Chose **Native** execution for milestone 1.
+- Chose **Native** execution for milestones 1 and 2a.
 - Interrupted once to redirect (cancelled the Android 11 emulator download and asked for a 64-bit port investigation instead). Check direction before long or expensive steps.
