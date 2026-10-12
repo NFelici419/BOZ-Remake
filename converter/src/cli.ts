@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ConfigError, loadConfig } from "./config.ts";
-import { parseDzIndex, type DzIndex } from "./dz.ts";
+import { buildClassNameDictionary } from "./class-names.ts";
+import { parseDzIndex, readDzEntry, type DzIndex } from "./dz.ts";
+import { buildReport, renderReportHtml } from "./report.ts";
 import { isKinoEntry } from "./selection.ts";
 import { unpackEntries } from "./unpack.ts";
 
@@ -29,7 +31,28 @@ function unpack(args: string[]): void {
   for (const f of res.failed) console.log(`  FAILED ${f.path}: ${f.error}`);
 }
 
-const commands: Record<string, (args: string[]) => void> = { unpack };
+function report(): void {
+  const cfg = loadConfig(path.join(CONVERTER_DIR, "local.json"));
+  const dict = buildClassNameDictionary(fs.readFileSync(cfg.gameBinaryPath));
+  const fd = fs.openSync(cfg.dzPath, "r");
+  let rep;
+  try {
+    const groups = readIndex(cfg.dzPath)
+      .entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"))
+      .map((e) => ({ entry: e, data: readDzEntry(fd, e) }));
+    rep = buildReport(cfg.dzPath, groups, dict);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  fs.writeFileSync(path.join(OUT_DIR, "report.json"), JSON.stringify(rep, null, 2) + "\n");
+  fs.writeFileSync(path.join(OUT_DIR, "report.html"), renderReportHtml(rep));
+  const t = rep.totals;
+  console.log(`groups ${t.groups}: ${t.parsed} parsed, ${t.failed} failed; lists ${t.listsIdentified}/${t.listsTotal} identified; classes ${Object.keys(rep.classesSeen).length}`);
+  console.log(`-> ${path.join(OUT_DIR, "report.html")}`);
+}
+
+const commands: Record<string, (args: string[]) => void> = { unpack, report };
 
 function main(argv: string[]): number {
   const [cmd, ...args] = argv;
