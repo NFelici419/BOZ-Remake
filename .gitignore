@@ -1,0 +1,10 @@
+# Generated converter output and original game data — never commit
+game/assets/converted/
+converter/out/
+converter/local.json
+*.dz
+*.group.bin
+*.s3e
+*.apk
+node_modules/
+.godot/
