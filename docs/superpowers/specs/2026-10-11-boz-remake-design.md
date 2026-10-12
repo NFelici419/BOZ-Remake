@@ -114,7 +114,7 @@ lives in a single `approximations.json` so guesses stay visible.
 | `MapLoader` | Builds Kino from converted glTF + placement JSON: rooms, spawn points, barricades, doors, buyables, navigation mesh. Uses the original lightmaps for lighting. |
 | `RoundDirector` | Round number, zombies per round, spawn timing, health scaling, between-round pause. |
 | `Zombie` | Go to a barricade, tear it down, then chase the player via the navigation mesh; attack, die, drop power-ups. |
-| `Player` | Movement, health / downed state, points, 2 weapon slots (3 with Mule Kick if Kino has it), perks. |
+| `Player` | Movement, health / downed state, points, 2 weapon slots, perks. A third slot exists only if the converted Kino data includes Mule Kick. |
 | `WeaponSystem` | Fire, reload, aim down sights, Pack-a-Punch variants — all data-driven. |
 | `Interactables` | Wall-buys, doors/debris, Mystery Box, perk machines, power switch, teleporter, Pack-a-Punch. |
 | `PowerUps` | Max Ammo, Insta-Kill, Double Points, Nuke, Carpenter. |
