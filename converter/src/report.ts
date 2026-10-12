@@ -1,6 +1,19 @@
 import { describeClass } from "./class-names.ts";
-import type { DzEntry } from "./dz.ts";
+import { readDzEntry, type DzEntry } from "./dz.ts";
 import { parseGroup } from "./group.ts";
+
+export type GroupInput = { entry: DzEntry; data: Buffer | Error };
+
+/** Reads each entry; a read failure is kept as an Error so the report can record it. */
+export function readGroups(fd: number, entries: DzEntry[]): GroupInput[] {
+  return entries.map((entry) => {
+    try {
+      return { entry, data: readDzEntry(fd, entry) };
+    } catch (e) {
+      return { entry, data: e as Error };
+    }
+  });
+}
 
 export type GroupReport = {
   path: string;
@@ -25,10 +38,11 @@ export type CoverageReport = {
  * Structure-level coverage. Only each group's first resource list can be
  * identified until per-class decoders exist, so resourcesDecoded is 0.
  */
-export function buildReport(dzPath: string, groups: { entry: DzEntry; data: Buffer }[], dict: Map<number, string>): CoverageReport {
+export function buildReport(dzPath: string, groups: GroupInput[], dict: Map<number, string>): CoverageReport {
   const rows: GroupReport[] = groups.map(({ entry, data }) => {
     const base = { path: entry.path, offset: entry.offset, size: entry.size };
     try {
+      if (data instanceof Error) throw data;
       const g = parseGroup(data);
       return {
         ...base,

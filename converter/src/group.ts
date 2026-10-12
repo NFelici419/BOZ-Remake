@@ -60,7 +60,10 @@ export function parseGroup(buf: Buffer): GroupInfo {
       }
     } catch (e) {
       // re-anchor payload-relative offsets to the whole buffer
-      if (e instanceof FormatError) throw new FormatError(`bad payload in record 0x${classHash.toString(16)}`, sizeAt + 4 + e.offset);
+      if (e instanceof FormatError) {
+        const reason = e.message.replace(/ @0x[0-9a-f]+$/, "");
+        throw new FormatError(`bad payload in record 0x${classHash.toString(16)}: ${reason}`, sizeAt + 4 + e.offset);
+      }
       throw e;
     }
     r.pos = sizeAt + size;

@@ -32,3 +32,14 @@ test("config reports missing config file", () => {
   const file = path.join(tempDir(), "local.json");
   assert.throws(() => loadConfig(file), (e: unknown) => e instanceof ConfigError && e.message.includes(file));
 });
+
+test("config rejects non-object JSON", () => {
+  const file = writeConfig(null as unknown as object);
+  assert.throws(() => loadConfig(file), ConfigError);
+});
+
+test("config rejects a directory where a file is expected", () => {
+  const dir = tempDir();
+  const file = writeConfig({ dzPath: dir, gameBinaryPath: dir });
+  assert.throws(() => loadConfig(file), (e: unknown) => e instanceof ConfigError && e.message.includes("dzPath"));
+});

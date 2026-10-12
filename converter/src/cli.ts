@@ -1,14 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ConfigError, loadConfig } from "./config.ts";
+import { FormatError } from "./bin-reader.ts";
+import { ConfigError, loadConfig, type Config } from "./config.ts";
 import { buildClassNameDictionary } from "./class-names.ts";
-import { parseDzIndex, readDzEntry, type DzIndex } from "./dz.ts";
-import { buildReport, renderReportHtml } from "./report.ts";
+import { parseDzIndex, type DzIndex } from "./dz.ts";
+import { buildReport, readGroups, renderReportHtml } from "./report.ts";
 import { isKinoEntry } from "./selection.ts";
 import { unpackEntries } from "./unpack.ts";
 
 const CONVERTER_DIR = path.resolve(import.meta.dirname, "..");
 const OUT_DIR = path.join(CONVERTER_DIR, "out");
+
+/** BOZ_CONFIG overrides the default converter/local.json (used by tests). */
+function config(): Config {
+  return loadConfig(process.env.BOZ_CONFIG || path.join(CONVERTER_DIR, "local.json"));
+}
 
 function readIndex(dzPath: string): DzIndex {
   const size = fs.statSync(dzPath).size;
@@ -19,11 +25,16 @@ function readIndex(dzPath: string): DzIndex {
   } finally {
     fs.closeSync(fd);
   }
-  return parseDzIndex(head, size);
+  try {
+    return parseDzIndex(head, size);
+  } catch (e) {
+    if (e instanceof FormatError) throw new FormatError(`${dzPath}: ${e.message.replace(/ @0x[0-9a-f]+$/, "")}`, e.offset);
+    throw e;
+  }
 }
 
 function unpack(args: string[]): void {
-  const cfg = loadConfig(path.join(CONVERTER_DIR, "local.json"));
+  const cfg = config();
   const { entries } = readIndex(cfg.dzPath);
   const selected = args.includes("--all") ? entries : entries.filter(isKinoEntry);
   const res = unpackEntries(cfg.dzPath, selected, OUT_DIR);
@@ -32,15 +43,13 @@ function unpack(args: string[]): void {
 }
 
 function report(): void {
-  const cfg = loadConfig(path.join(CONVERTER_DIR, "local.json"));
+  const cfg = config();
   const dict = buildClassNameDictionary(fs.readFileSync(cfg.gameBinaryPath));
   const fd = fs.openSync(cfg.dzPath, "r");
   let rep;
   try {
-    const groups = readIndex(cfg.dzPath)
-      .entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"))
-      .map((e) => ({ entry: e, data: readDzEntry(fd, e) }));
-    rep = buildReport(cfg.dzPath, groups, dict);
+    const selected = readIndex(cfg.dzPath).entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"));
+    rep = buildReport(cfg.dzPath, readGroups(fd, selected), dict);
   } finally {
     fs.closeSync(fd);
   }
@@ -68,6 +77,10 @@ function main(argv: string[]): number {
     if (e instanceof ConfigError) {
       console.error(e.message);
       return 2;
+    }
+    if (e instanceof FormatError) {
+      console.error(e.message);
+      return 1;
     }
     throw e;
   }

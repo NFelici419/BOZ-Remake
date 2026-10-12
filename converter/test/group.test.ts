@@ -96,3 +96,14 @@ test("every group in the real archive parses", (t) => {
     fs.closeSync(real.fd);
   }
 });
+
+test("payload errors keep the underlying reason", () => {
+  // members record whose name has no NUL terminator
+  const payload = Buffer.from("kino");
+  const rec = Buffer.alloc(8);
+  rec.writeUInt32LE(0x8081e087, 0);
+  rec.writeUInt32LE(payload.length + 4, 4);
+  const head = Buffer.from([0x3d, 0x03, 0x07, 0x01, 0, 0]);
+  const buf = Buffer.concat([head, rec, payload, Buffer.alloc(4)]);
+  assert.throws(() => parseGroup(buf), (e: unknown) => e instanceof FormatError && e.message.includes("unterminated string"));
+});

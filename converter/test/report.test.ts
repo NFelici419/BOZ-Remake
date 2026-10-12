@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { classHash, buildClassNameDictionary } from "../src/class-names.ts";
 import { parseDzIndex, readDzEntry, type DzEntry } from "../src/dz.ts";
-import { buildReport, renderReportHtml } from "../src/report.ts";
+import { buildReport, readGroups, renderReportHtml } from "../src/report.ts";
 import { isKinoEntry } from "../src/selection.ts";
-import { buildGroup, realSource } from "./helpers.ts";
+import { buildDz, buildGroup, realSource, tempDir } from "./helpers.ts";
 
 const entry = (p: string, offset = 100): DzEntry => ({ index: 0, name: p.split("/").pop()!, dir: "levels/kino", path: p, offset, size: 1, flags: 0x100 });
 const dict = new Map([[classHash("CIwTexture"), "CIwTexture"]]);
@@ -56,6 +57,25 @@ test("real Kino report", (t) => {
     assert.equal(r.totals.failed, 0);
     for (const c of ["CIwTexture", "CIwMaterial", "CZombieConfiguration"]) assert.ok(c in r.classesSeen, c);
     assert.equal(r.groups.find((g) => g.path === "levels/kino/kino_statics.group.bin")?.listCount, 14);
+  } finally {
+    fs.closeSync(fd);
+  }
+});
+
+test("unreadable group becomes a failed row instead of aborting", () => {
+  const dir = tempDir();
+  const dzPath = path.join(dir, "a.dz");
+  const buf = buildDz([
+    { name: "bad.group.bin", dir: "levels\\kino", data: Buffer.from("X"), flags: 0x200 },
+    { name: "ok.group.bin", dir: "levels\\kino", data: buildGroup({ name: "ok", flags: 0 }) },
+  ]);
+  fs.writeFileSync(dzPath, buf);
+  const fd = fs.openSync(dzPath, "r");
+  try {
+    const r = buildReport(dzPath, readGroups(fd, parseDzIndex(buf, buf.length).entries), dict);
+    assert.equal(r.totals.parsed, 1);
+    assert.equal(r.totals.failed, 1);
+    assert.match(r.groups.find((g) => g.status === "failed")!.error!, /0x200/);
   } finally {
     fs.closeSync(fd);
   }
