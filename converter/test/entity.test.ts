@@ -4,24 +4,8 @@ import { FormatError } from "../src/bin-reader.ts";
 import { classHash } from "../src/class-names.ts";
 import { entityTransform, parseEntitySpec } from "../src/entity.ts";
 import { listResources, resourceBytes } from "../src/resources.ts";
+import { component, entity, f32, field, transform, u32 } from "./fixtures.ts";
 import { realKinoGroup, realKinoGroups } from "./helpers.ts";
-
-const u32 = (...v: number[]) => Buffer.concat(v.map((x) => { const b = Buffer.alloc(4); b.writeUInt32LE(x >>> 0); return b; }));
-const f32 = (...v: number[]) => Buffer.concat(v.map((x) => { const b = Buffer.alloc(4); b.writeFloatLE(x); return b; }));
-
-function field(owner: string, type: string, name: string, data: Buffer): Buffer {
-  return Buffer.concat([u32(classHash(owner), classHash(type), 1, classHash(name), 1, data.length), data]);
-}
-function component(cls: string, fields: Buffer[]): Buffer {
-  const reflSize = 16 + fields.reduce((n, f) => n + f.length, 0);
-  return Buffer.concat([u32(classHash("CIsComponentSpec"), 0, classHash(cls), reflSize), Buffer.from("LFER"), u32(classHash(cls), reflSize, fields.length), ...fields]);
-}
-function entity(nameHash: number, components: Buffer[], trailing = Buffer.alloc(0)): Buffer {
-  const body = Buffer.concat([u32(nameHash, components.length), ...components, trailing]);
-  return Buffer.concat([u32(body.length + 4), body]);
-}
-const transform = (pos: number[], rot: number[]) =>
-  component("CIsTransform", [field("CIsTransform", "CIwFVec3", "m_localPosition", f32(...pos)), field("CIsTransform", "CIwFQuat", "m_localRotation", f32(...rot))]);
 
 test("parses synthetic transform", () => {
   const res = entity(0x1234, [transform([1, 2, 3], [0, 0, 0, 1]), component("CIsRenderableModel", [field("CIsRenderableModel", "uint32", "m_x", Buffer.from([7]))])], Buffer.alloc(3));

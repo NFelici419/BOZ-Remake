@@ -4,27 +4,9 @@ import { FormatError } from "../src/bin-reader.ts";
 import { classHash } from "../src/class-names.ts";
 import { decodeModel } from "../src/model.ts";
 import { listResources, resourceBytes } from "../src/resources.ts";
+import { colsBlock, model, triList, uvs, verts } from "./fixtures.ts";
 import { realKinoGroup, realKinoGroups } from "./helpers.ts";
 
-const u16 = (...v: number[]) => Buffer.concat(v.map((x) => { const b = Buffer.alloc(2); b.writeUInt16LE(x & 0xffff); return b; }));
-const u32 = (...v: number[]) => Buffer.concat(v.map((x) => { const b = Buffer.alloc(4); b.writeUInt32LE(x >>> 0); return b; }));
-const head = (cls: string) => u32(classHash(cls), classHash(cls));
-
-/** Verts: @8 u16 ?, @10 numVerts, @12 u16 ?, @14 packedCount, @16 s16 center, X/Y/Z planes, then u16 remap. */
-function verts(xyz: number[][], center: number, remap: number[]): Buffer {
-  const planes = [0, 1, 2].map((a) => u16(...xyz.map((v) => v[a])));
-  return Buffer.concat([head("CIwModelBlockVerts"), u16(0, xyz.length + remap.length, 0, xyz.length, center), ...planes, u16(...remap)]);
-}
-function uvs(cls: "CIwModelBlockGLUVs" | "CIwModelBlockGLUVs2", uv: number[][]): Buffer {
-  return Buffer.concat([head(cls), u16(0, uv.length, 0), ...uv.map(([a, b]) => u16(a, b))]);
-}
-function triList(material: number, indices: number[]): Buffer {
-  return Buffer.concat([head("CIwModelBlockGLTriList"), u16(0, indices.length, 0, material, 0), u16(...indices), u32(0)]);
-}
-function model(blocks: Buffer[], materials: number[], nameHash = 0x5555): Buffer {
-  const body = Buffer.concat([u32(nameHash), Buffer.alloc(8), ...blocks, u32(0, materials.length, ...materials)]);
-  return Buffer.concat([u32(body.length + 4), body]);
-}
 const QUAD = [[1, 2, 3], [-4, 5, -6], [7, -8, 9]];
 
 test("decodes synthetic model", () => {
@@ -40,7 +22,7 @@ test("decodes synthetic model", () => {
 });
 
 test("decodes lightmap uvs and skips unconsumed blocks", () => {
-  const cols = Buffer.concat([head("CIwModelBlockCols"), Buffer.from("\x00\x01\xff\xff\xff\xff\xff\xff\xff", "latin1")]);
+  const cols = colsBlock(Buffer.from("\x00\x01\xff\xff\xff\xff\xff\xff\xff", "latin1"));
   const uv = [[0, 0], [4096, 0], [0, 4096]];
   const m = decodeModel(model([verts(QUAD, 0, []), uvs("CIwModelBlockGLUVs", uv), uvs("CIwModelBlockGLUVs2", uv), cols, triList(1, [2, 1, 0]), triList(0, [0, 1, 2])], [1, 2]));
   assert.deepEqual([...m.uv1!], [0, 0, 1, 0, 0, 1]);

@@ -4,15 +4,8 @@ import { FormatError } from "../src/bin-reader.ts";
 import { classHash } from "../src/class-names.ts";
 import { decodeMaterial } from "../src/material.ts";
 import { listResources, resourceBytes } from "../src/resources.ts";
+import { material } from "./fixtures.ts";
 import { realKinoGroup, realKinoGroups } from "./helpers.ts";
-
-function material(size: number, at: Record<number, number>): Buffer {
-  const b = Buffer.alloc(size, 0xee);
-  b.writeUInt32LE(size, 0);
-  b.writeUInt32LE(0x1111, 4);
-  for (const [off, v] of Object.entries(at)) b.writeUInt32LE(v, Number(off));
-  return b;
-}
 
 test("size 17/59/65 layouts", () => {
   assert.deepEqual(decodeMaterial(material(17, { 13: 0xa17 })), { nameHash: 0x1111, texture0: 0xa17, texture1: null });
