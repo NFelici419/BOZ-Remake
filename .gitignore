@@ -8,3 +8,4 @@ converter/local.json
 *.apk
 node_modules/
 .godot/
+.scratch/
