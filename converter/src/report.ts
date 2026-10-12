@@ -1,6 +1,7 @@
 import { describeClass } from "./class-names.ts";
 import { readDzEntry, type DzEntry } from "./dz.ts";
 import { parseGroup } from "./group.ts";
+import { listResources } from "./resources.ts";
 
 export type GroupInput = { entry: DzEntry; data: Buffer | Error };
 
@@ -25,18 +26,22 @@ export type GroupReport = {
   children?: string[];
   listCount?: number;
   firstList?: { className: string; resourceCount: number };
+  resourceCounts?: Record<string, number>;
 };
 
 export type CoverageReport = {
   generatedFrom: string;
   groups: GroupReport[];
   totals: { groups: number; parsed: number; failed: number; listsTotal: number; listsIdentified: number; resourcesDecoded: 0 };
-  classesSeen: Record<string, number>;
+  classesSeen: Record<string, number>; // className -> number of groups containing it
+  resourcesByClass: Record<string, number>;
 };
 
+const sortedKeys = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+
 /**
- * Structure-level coverage. Only each group's first resource list can be
- * identified until per-class decoders exist, so resourcesDecoded is 0.
+ * Structure-level coverage: every resource list is walked and counted by
+ * class. Per-class decoders come later, so resourcesDecoded is still 0.
  */
 export function buildReport(dzPath: string, groups: GroupInput[], dict: Map<number, string>): CoverageReport {
   const rows: GroupReport[] = groups.map(({ entry, data }) => {
@@ -44,6 +49,11 @@ export function buildReport(dzPath: string, groups: GroupInput[], dict: Map<numb
     try {
       if (data instanceof Error) throw data;
       const g = parseGroup(data);
+      const counts: Record<string, number> = {};
+      for (const ref of listResources(data)) {
+        const c = describeClass(ref.classHash, dict);
+        counts[c] = (counts[c] ?? 0) + 1;
+      }
       return {
         ...base,
         status: "parsed",
@@ -51,6 +61,7 @@ export function buildReport(dzPath: string, groups: GroupInput[], dict: Map<numb
         children: g.children.map((c) => c.path),
         listCount: g.listCount,
         ...(g.firstList && { firstList: { className: describeClass(g.firstList.classHash, dict), resourceCount: g.firstList.resourceCount } }),
+        resourceCounts: sortedKeys(counts),
       };
     } catch (e) {
       return { ...base, status: "failed", error: (e as Error).message };
@@ -59,8 +70,13 @@ export function buildReport(dzPath: string, groups: GroupInput[], dict: Map<numb
   rows.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
   const seen: Record<string, number> = {};
-  for (const r of rows) if (r.firstList) seen[r.firstList.className] = (seen[r.firstList.className] ?? 0) + 1;
-  const classesSeen = Object.fromEntries(Object.entries(seen).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const byClass: Record<string, number> = {};
+  for (const r of rows) {
+    for (const [c, n] of Object.entries(r.resourceCounts ?? {})) {
+      seen[c] = (seen[c] ?? 0) + 1;
+      byClass[c] = (byClass[c] ?? 0) + n;
+    }
+  }
 
   const parsed = rows.filter((r) => r.status === "parsed");
   return {
@@ -71,10 +87,11 @@ export function buildReport(dzPath: string, groups: GroupInput[], dict: Map<numb
       parsed: parsed.length,
       failed: rows.length - parsed.length,
       listsTotal: parsed.reduce((n, r) => n + (r.listCount ?? 0), 0),
-      listsIdentified: parsed.filter((r) => r.firstList).length,
+      listsIdentified: parsed.reduce((n, r) => n + (r.listCount ?? 0), 0),
       resourcesDecoded: 0,
     },
-    classesSeen,
+    classesSeen: sortedKeys(seen),
+    resourcesByClass: sortedKeys(byClass),
   };
 }
 
@@ -90,13 +107,15 @@ export function renderReportHtml(report: CoverageReport): string {
   const stat = (label: string, value: number | string) => `<div class="stat"><b>${value}</b><span>${label}</span></div>`;
   const groupRows = report.groups
     .map((g) => {
-      const first = g.firstList ? `${esc(g.firstList.className)} &times; ${g.firstList.resourceCount}` : "&mdash;";
-      const detail = g.status === "failed" ? `<span class="err">${esc(g.error ?? "")}</span>` : first;
-      return `<tr class="${g.status}"><td>${esc(g.path)}</td><td>${esc(g.name ?? "")}</td><td class="n">${kb(g.size)}</td><td>${g.status}</td><td class="n">${g.listCount ?? ""}</td><td>${detail}</td><td class="n">${g.children?.length ?? ""}</td></tr>`;
+      const counts = Object.entries(g.resourceCounts ?? {});
+      const classes = counts.length ? counts.map(([c, n]) => `${esc(c)} &times; ${n}`).join(", ") : "&mdash;";
+      const detail = g.status === "failed" ? `<span class="err">${esc(g.error ?? "")}</span>` : classes;
+      const total = counts.reduce((n, [, k]) => n + k, 0);
+      return `<tr class="${g.status}"><td>${esc(g.path)}</td><td>${esc(g.name ?? "")}</td><td class="n">${kb(g.size)}</td><td>${g.status}</td><td class="n">${g.listCount ?? ""}</td><td class="n">${g.status === "parsed" ? total : ""}</td><td>${detail}</td><td class="n">${g.children?.length ?? ""}</td></tr>`;
     })
     .join("\n");
   const classRows = Object.entries(report.classesSeen)
-    .map(([c, n]) => `<tr><td>${esc(c)}</td><td class="n">${n}</td></tr>`)
+    .map(([c, n]) => `<tr><td>${esc(c)}</td><td class="n">${n}</td><td class="n">${report.resourcesByClass[c] ?? 0}</td></tr>`)
     .join("\n");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -116,14 +135,14 @@ td.n{text-align:right;font-variant-numeric:tabular-nums}tr.failed td{color:var(-
 <h1>Kino der Toten: asset coverage</h1>
 <p class="src">Source: ${esc(report.generatedFrom)}</p>
 <div class="stats">${stat("groups", t.groups)}${stat("parsed", t.parsed)}${stat("failed", t.failed)}${stat("resource lists", t.listsTotal)}${stat("lists identified", t.listsIdentified)}${stat("resources decoded", t.resourcesDecoded)}</div>
-<p class="note">Milestone 1 reads group structure only. Each group's first resource list is identified; the rest need per-class decoders (next milestone).</p>
+<p class="note">Every resource list is walked and counted by class. Decoding individual classes is reported once the decoders run.</p>
 <h2>Resource groups</h2>
-<div class="wrap"><table><thead><tr><th>Path</th><th>Name</th><th>Size</th><th>Status</th><th>Lists</th><th>First list</th><th>Children</th></tr></thead>
+<div class="wrap"><table><thead><tr><th>Path</th><th>Name</th><th>Size</th><th>Status</th><th>Lists</th><th>Resources</th><th>Classes</th><th>Children</th></tr></thead>
 <tbody>
 ${groupRows}
 </tbody></table></div>
-<h2>Classes seen (first lists)</h2>
-<div class="wrap"><table><thead><tr><th>Class</th><th>Groups</th></tr></thead><tbody>
+<h2>Classes seen</h2>
+<div class="wrap"><table><thead><tr><th>Class</th><th>Groups</th><th>Resources</th></tr></thead><tbody>
 ${classRows}
 </tbody></table></div>
 </main></body></html>

@@ -9,10 +9,13 @@ import { isKinoEntry } from "../src/selection.ts";
 import { buildDz, buildGroup, realSource, tempDir } from "./helpers.ts";
 
 const entry = (p: string, offset = 100): DzEntry => ({ index: 0, name: p.split("/").pop()!, dir: "levels/kino", path: p, offset, size: 1, flags: 0x100 });
-const dict = new Map([[classHash("CIwTexture"), "CIwTexture"]]);
+const dict = new Map([
+  [classHash("CIwTexture"), "CIwTexture"],
+  [classHash("CIwMaterial"), "CIwMaterial"],
+]);
 
 function sample() {
-  const good = buildGroup({ name: "ok", flags: 0, lists: [{ classHash: classHash("CIwTexture"), count: 3, body: Buffer.alloc(0) }] });
+  const good = buildGroup({ name: "ok", flags: 0, lists: [{ classHash: classHash("CIwTexture"), resources: [Buffer.alloc(1), Buffer.alloc(2), Buffer.alloc(3)] }] });
   const bad = buildGroup({ name: "bad", flags: 0 }).subarray(0, 10);
   return [
     { entry: entry("levels/kino/z_bad.group.bin", 200), data: bad },
@@ -29,6 +32,29 @@ test("report counts parsed and failed groups", () => {
   assert.deepEqual(r.classesSeen, { CIwTexture: 1 });
   assert.deepEqual(r.groups.map((g) => g.path), ["levels/kino/a_ok.group.bin", "levels/kino/z_bad.group.bin"]);
   assert.equal(r.totals.resourcesDecoded, 0);
+  assert.deepEqual(r.groups.find((g) => g.status === "parsed")!.resourceCounts, { CIwTexture: 3 });
+});
+
+test("report walks every list", () => {
+  const data = buildGroup({
+    name: "two",
+    flags: 0,
+    lists: [
+      { classHash: classHash("CIwTexture"), resources: [Buffer.alloc(1)] },
+      { classHash: classHash("CIwMaterial"), resources: [Buffer.alloc(1), Buffer.alloc(1)] },
+    ],
+  });
+  const r = buildReport("x.dz", [{ entry: entry("levels/kino/two.group.bin"), data }], dict);
+  assert.deepEqual(r.groups[0].resourceCounts, { CIwMaterial: 2, CIwTexture: 1 });
+  assert.equal(r.totals.listsTotal, 2);
+  assert.equal(r.totals.listsIdentified, 2);
+});
+
+test("group whose resources do not walk is a failed row", () => {
+  const data = buildGroup({ name: "raw", flags: 0, lists: [{ classHash: classHash("CIwTexture"), count: 0, body: Buffer.alloc(6) }] });
+  const r = buildReport("x.dz", [{ entry: entry("levels/kino/raw.group.bin"), data }], dict);
+  assert.equal(r.groups[0].status, "failed");
+  assert.match(r.groups[0].error!, /container end/);
 });
 
 test("html escapes names", () => {
@@ -57,6 +83,8 @@ test("real Kino report", (t) => {
     assert.equal(r.totals.failed, 0);
     for (const c of ["CIwTexture", "CIwMaterial", "CZombieConfiguration"]) assert.ok(c in r.classesSeen, c);
     assert.equal(r.groups.find((g) => g.path === "levels/kino/kino_statics.group.bin")?.listCount, 14);
+    assert.equal(r.totals.listsIdentified, r.totals.listsTotal);
+    assert.ok(r.groups.every((g) => g.resourceCounts));
   } finally {
     fs.closeSync(fd);
   }

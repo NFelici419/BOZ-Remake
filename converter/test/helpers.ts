@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { parseDzIndex, readDzEntry } from "../src/dz.ts";
+import { isKinoEntry } from "../src/selection.ts";
 
 const CONVERTER_DIR = path.resolve(import.meta.dirname, "..");
 
@@ -38,7 +40,14 @@ export function buildDz(files: DzFile[]): Buffer {
   return Buffer.concat([...head, ...files.map((f) => f.data)]);
 }
 
-export type GroupList = { classHash: number; count: number; body: Buffer };
+/** `body` keeps milestone 1's raw layout; `resources` writes F1 lists (flags 1,1; each resource sized, nameHash = i+1). */
+export type GroupList = { classHash: number; count: number; body: Buffer } | { classHash: number; resources: Buffer[] };
+
+function listBytes(l: GroupList): Buffer {
+  if ("body" in l) return Buffer.concat([u32(l.classHash), u32(l.count), l.body]);
+  const res = l.resources.map((r, i) => Buffer.concat([u32(r.length + 8), u32(i + 1), r]));
+  return Buffer.concat([u32(l.classHash), u32(l.resources.length), Buffer.from([1, 1]), ...res]);
+}
 
 function record(hash: number, payload: Buffer): Buffer {
   return Buffer.concat([u32(hash), u32(payload.length + 4), payload]);
@@ -52,7 +61,7 @@ export function buildGroup(opts: { name: string; flags: number; children?: strin
     parts.push(record(0x3b495dc0, Buffer.concat([Buffer.from([opts.children.length]), ...kids])));
   }
   if (opts.lists) {
-    const lists = opts.lists.map((l) => Buffer.concat([u32(l.classHash), u32(l.count), l.body]));
+    const lists = opts.lists.map(listBytes);
     parts.push(record(0xdc3c2177, Buffer.concat([u32(opts.lists.length), ...lists])));
   }
   parts.push(u32(0));
@@ -70,4 +79,33 @@ export function realSource(): { dzPath: string; gameBinaryPath: string } | null 
 
 export function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "boz-"));
+}
+
+export type RealGroup = { path: string; data: Buffer };
+let kinoCache: RealGroup[] | null | undefined;
+
+/** Every Kino .group.bin from the real archive (sorted by path, read once), or null without a source. */
+export function realKinoGroups(): RealGroup[] | null {
+  if (kinoCache !== undefined) return kinoCache;
+  const src = realSource();
+  if (!src) return (kinoCache = null);
+  const size = fs.statSync(src.dzPath).size;
+  const fd = fs.openSync(src.dzPath, "r");
+  try {
+    const head = Buffer.alloc(Math.min(1 << 20, size));
+    fs.readSync(fd, head, 0, head.length, 0);
+    kinoCache = parseDzIndex(head, size)
+      .entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"))
+      .map((e) => ({ path: e.path, data: readDzEntry(fd, e) }))
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  } finally {
+    fs.closeSync(fd);
+  }
+  return kinoCache;
+}
+
+export function realKinoGroup(p: string): Buffer {
+  const g = realKinoGroups()?.find((x) => x.path === p);
+  if (!g) throw new Error(`no real group ${p}`);
+  return g.data;
 }
