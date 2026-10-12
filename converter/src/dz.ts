@@ -79,3 +79,21 @@ export function readDzEntry(fd: number, entry: DzEntry): Buffer {
   if (n !== entry.size) throw new FormatError(`${entry.path}: short read ${n}/${entry.size}`, entry.offset);
   return buf;
 }
+
+/** Reads the table of the archive at `dzPath`; a format error names the file. */
+export function readDzIndex(dzPath: string): DzIndex {
+  const size = fs.statSync(dzPath).size;
+  const head = Buffer.alloc(Math.min(1 << 20, size));
+  const fd = fs.openSync(dzPath, "r");
+  try {
+    fs.readSync(fd, head, 0, head.length, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    return parseDzIndex(head, size);
+  } catch (e) {
+    if (e instanceof FormatError) throw new FormatError(`${dzPath}: ${e.message.replace(/ @0x[0-9a-f]+$/, "")}`, e.offset);
+    throw e;
+  }
+}

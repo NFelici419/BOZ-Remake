@@ -92,6 +92,7 @@ function decodeRgba4444(res: Buffer, width: number, height: number, pitch: numbe
  * DXT image, or a cubemap of 6 such records after the outer header.
  */
 export function decodeTexture(res: Buffer): Texture {
+  if (res.length < HEADER + 1) throw new FormatError(`texture is ${res.length} bytes, shorter than its header`, 0);
   const format = res[13];
   if (format === FORMAT_RAW) {
     if (res[18] !== RAW_RGBA4444) return { kind: "unsupported", reason: `raw pixel format ${hex(res[18])}` };

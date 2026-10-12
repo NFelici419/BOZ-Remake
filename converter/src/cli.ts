@@ -3,7 +3,8 @@ import path from "node:path";
 import { FormatError } from "./bin-reader.ts";
 import { ConfigError, loadConfig, type Config } from "./config.ts";
 import { buildClassNameDictionary } from "./class-names.ts";
-import { parseDzIndex, type DzIndex } from "./dz.ts";
+import { readDzIndex } from "./dz.ts";
+import { exportKino } from "./kino-export.ts";
 import { buildReport, readGroups, renderReportHtml } from "./report.ts";
 import { isKinoEntry } from "./selection.ts";
 import { unpackEntries } from "./unpack.ts";
@@ -16,26 +17,9 @@ function config(): Config {
   return loadConfig(process.env.BOZ_CONFIG || path.join(CONVERTER_DIR, "local.json"));
 }
 
-function readIndex(dzPath: string): DzIndex {
-  const size = fs.statSync(dzPath).size;
-  const head = Buffer.alloc(Math.min(1 << 20, size));
-  const fd = fs.openSync(dzPath, "r");
-  try {
-    fs.readSync(fd, head, 0, head.length, 0);
-  } finally {
-    fs.closeSync(fd);
-  }
-  try {
-    return parseDzIndex(head, size);
-  } catch (e) {
-    if (e instanceof FormatError) throw new FormatError(`${dzPath}: ${e.message.replace(/ @0x[0-9a-f]+$/, "")}`, e.offset);
-    throw e;
-  }
-}
-
 function unpack(args: string[]): void {
   const cfg = config();
-  const { entries } = readIndex(cfg.dzPath);
+  const { entries } = readDzIndex(cfg.dzPath);
   const selected = args.includes("--all") ? entries : entries.filter(isKinoEntry);
   const res = unpackEntries(cfg.dzPath, selected, OUT_DIR);
   console.log(`unpacked ${res.written.length} entries, ${res.failed.length} failed -> ${path.join(OUT_DIR, "unpacked")}`);
@@ -48,7 +32,7 @@ function report(): void {
   const fd = fs.openSync(cfg.dzPath, "r");
   let rep;
   try {
-    const selected = readIndex(cfg.dzPath).entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"));
+    const selected = readDzIndex(cfg.dzPath).entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"));
     rep = buildReport(cfg.dzPath, readGroups(fd, selected), dict);
   } finally {
     fs.closeSync(fd);
@@ -58,10 +42,21 @@ function report(): void {
   fs.writeFileSync(path.join(OUT_DIR, "report.html"), renderReportHtml(rep));
   const t = rep.totals;
   console.log(`groups ${t.groups}: ${t.parsed} parsed, ${t.failed} failed; lists ${t.listsIdentified}/${t.listsTotal} identified; classes ${Object.keys(rep.classesSeen).length}`);
+  console.log(`decoded ${t.resourcesDecoded} textures/materials/models, ${t.decodeFailed} failed, ${t.unsupportedTextures} unsupported textures; missing refs: ${t.missingMaterialRefs} material, ${t.missingTextureRefs} texture`);
   console.log(`-> ${path.join(OUT_DIR, "report.html")}`);
 }
 
-const commands: Record<string, (args: string[]) => void> = { unpack, report };
+function exportKinoScene(): void {
+  const s = exportKino(config().dzPath, OUT_DIR);
+  const unplaced = s.unplaced.length ? ` (${s.unplaced.join(", ")})` : "";
+  console.log(`room models ${s.models}: ${s.placed} placed, ${s.unplaced.length} unplaced${unplaced}`);
+  console.log(`textures ${s.textures} written, ${s.unsupportedTextures} unsupported; missing materials ${s.missingMaterials}; materials without a base texture ${s.missingTextures}`);
+  console.log(`failed ${s.failed.length}`);
+  for (const f of s.failed) console.log(`  FAILED ${f}`);
+  console.log(`-> ${path.join(OUT_DIR, "kino", "kino.gltf")}`);
+}
+
+const commands: Record<string, (args: string[]) => void> = { unpack, report, "export-kino": exportKinoScene };
 
 function main(argv: string[]): number {
   const [cmd, ...args] = argv;

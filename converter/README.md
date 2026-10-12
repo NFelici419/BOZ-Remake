@@ -16,4 +16,11 @@ writes inspectable output to `out/`.
 - `npm test`: unit tests (real-data tests are skipped without `local.json`)
 - `npm run typecheck`
 - `npm run boz -- unpack [--all]`: extract Kino's files (or all) to `out/unpacked/`
-- `npm run boz -- report`: write `out/report.json` and `out/report.html`
+- `npm run boz -- report`: write `out/report.json` and `out/report.html` (resource counts,
+  decoded textures/materials/models, decode failures and missing references)
+- `npm run boz -- export-kino`: write `out/kino/kino.gltf` + `kino.bin` + `textures/*.png`:
+  every static Kino room model placed by its entity, with surface textures and
+  lightmaps (lightmap = occlusion texture on UV set 1). Unknown materials and
+  unusable textures become flat grey. Scale (`POSITION_SCALE`, game units to
+  metres) and handedness (`MIRROR_X`) are provisional constants in
+  `src/kino-export.ts`, to be confirmed in Godot.

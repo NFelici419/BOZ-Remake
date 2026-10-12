@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { FormatError } from "../src/bin-reader.ts";
 import { classHash } from "../src/class-names.ts";
 import { decodeDxt, decodeTexture } from "../src/texture.ts";
 import { listResources, resourceBytes } from "../src/resources.ts";
@@ -95,6 +96,10 @@ test("unsupported raw and gl formats reported", () => {
   assert.match(raw.kind === "unsupported" ? raw.reason : "", /0xe\b/);
   const gl = decodeTexture(compressed(glRecord(0x8c00, 4, 4, [Buffer.alloc(8)]), 4, 4));
   assert.match(gl.kind === "unsupported" ? gl.reason : "", /0x8c00/);
+});
+
+test("rejects truncated texture", () => {
+  assert.throws(() => decodeTexture(Buffer.alloc(12)), (e) => e instanceof FormatError && /12 bytes/.test(e.message));
 });
 
 test("rejects record size that matches neither image nor cubemap", () => {
