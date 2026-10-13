@@ -45,6 +45,13 @@ export function glRecord(glFormat: number, w: number, h: number, mips: Buffer[],
 }
 export const dxtBlock = (c0: number, c1: number, indices: number) => Buffer.concat([u16(c0, c1), u32(indices)]);
 export const compressedTexture = (rec: Buffer, w: number, h: number) => texture({ format: 0x2b, b18: 0x23, width: w, height: h, pitch: w * 2, recordSize: rec.length, payload: rec });
+/** 4×4 DXT1 cubemap whose six faces are solid RGB565 colours, in file order. */
+export function cubemapTexture(faceColours: number[]): Buffer {
+  const faces = faceColours.map((c) => glRecord(0x83f1, 4, 4, [dxtBlock(c, 0, 0)]));
+  const rec = glRecord(0x83f1, 4, 4, [dxtBlock(0, 0, 0)]).subarray(0, 72);
+  rec.writeUInt32LE(72 + faces.reduce((n, f) => n + f.length, 0), 4);
+  return compressedTexture(Buffer.concat([rec, ...faces]), 4, 24);
+}
 /** Raw RGBA4444 texture with tight pitch. */
 export const rgba4444Texture = (w: number, h: number, pixels: number[], nameHash?: number) =>
   texture({ format: 0x06, b18: 5, width: w, height: h, pitch: w * 2, recordSize: 0, payload: u16(...pixels), nameHash });
@@ -71,7 +78,14 @@ export function uvs(cls: "CIwModelBlockGLUVs" | "CIwModelBlockGLUVs2", uv: numbe
 export function triList(materialIndex: number, indices: number[]): Buffer {
   return Buffer.concat([blockHead("CIwModelBlockGLTriList"), u16(0, indices.length, 0, materialIndex, 0), u16(...indices), u32(0)]);
 }
-export const colsBlock = (data: Buffer) => Buffer.concat([blockHead("CIwModelBlockCols"), data]);
+/** A block the decoder skips by scanning, e.g. Norms. */
+export const opaqueBlock = (cls: string, data: Buffer) => Buffer.concat([blockHead(cls), data]);
+/** Cols: @8 u16 (4*count+28), @10 count, @12 u16 0, @14 flag; flag bit 0 = one grey byte per vertex, else R/G/B/A planes. */
+export function cols(flag: number, data: Buffer, count: number): Buffer {
+  return Buffer.concat([blockHead("CIwModelBlockCols"), u16(4 * count + 28, count, 0), Buffer.from([flag]), data]);
+}
+export const colsRgba = (rgba: number[][], flag = 0) => cols(flag, Buffer.from([0, 1, 2, 3].flatMap((c) => rgba.map((v) => v[c]))), rgba.length);
+export const colsGrey = (values: number[]) => cols(1, Buffer.from(values), values.length);
 export function model(blocks: Buffer[], materials: number[], nameHash = 0x5555): Buffer {
   return resource(nameHash, Buffer.concat([Buffer.alloc(8), ...blocks, u32(0, materials.length, ...materials)]));
 }

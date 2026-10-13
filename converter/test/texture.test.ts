@@ -4,7 +4,7 @@ import { FormatError } from "../src/bin-reader.ts";
 import { classHash } from "../src/class-names.ts";
 import { decodeDxt, decodeTexture } from "../src/texture.ts";
 import { listResources, resourceBytes } from "../src/resources.ts";
-import { compressedTexture as compressed, dxtBlock as block, glRecord, texture, u16 } from "./fixtures.ts";
+import { compressedTexture as compressed, cubemapTexture, dxtBlock as block, glRecord, texture, u16 } from "./fixtures.ts";
 import { realKinoGroup, realKinoGroups } from "./helpers.ts";
 
 const DXT1 = 0x83f1;
@@ -74,11 +74,7 @@ test("decodes raw RGBA4444", () => {
 });
 
 test("decodes cubemap faces", () => {
-  const face = (c: number) => glRecord(DXT1, 4, 4, [block(c, 0, 0)]);
-  const faces = [0xf800, 0x07e0, 0x001f, 0xffff, 0xf81f, 0x0000].map(face);
-  const rec = glRecord(DXT1, 4, 4, [block(0, 0, 0)]).subarray(0, 72);
-  rec.writeUInt32LE(72 + faces.reduce((n, f) => n + f.length, 0), 4);
-  const t = decodeTexture(compressed(Buffer.concat([rec, ...faces]), 4, 24));
+  const t = decodeTexture(cubemapTexture([0xf800, 0x07e0, 0x001f, 0xffff, 0xf81f, 0x0000]));
   assert.equal(t.kind, "cubemap");
   if (t.kind !== "cubemap") return;
   assert.deepEqual([t.width, t.height, t.faces.length], [4, 4, 6]);

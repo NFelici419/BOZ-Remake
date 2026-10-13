@@ -40,12 +40,12 @@ export function buildDz(files: DzFile[]): Buffer {
   return Buffer.concat([...head, ...files.map((f) => f.data)]);
 }
 
-/** `body` keeps milestone 1's raw layout; `resources` writes F1 lists (flags 1,1; each resource sized, nameHash = i+1). */
-export type GroupList = { classHash: number; count: number; body: Buffer } | { classHash: number; resources: Buffer[] };
+/** `body` keeps milestone 1's raw layout; `resources` writes F1 lists (flags 1,1; each resource sized, nameHash = nameHashes[i] ?? i+1). */
+export type GroupList = { classHash: number; count: number; body: Buffer } | { classHash: number; resources: Buffer[]; nameHashes?: number[] };
 
 function listBytes(l: GroupList): Buffer {
   if ("body" in l) return Buffer.concat([u32(l.classHash), u32(l.count), l.body]);
-  const res = l.resources.map((r, i) => Buffer.concat([u32(r.length + 8), u32(i + 1), r]));
+  const res = l.resources.map((r, i) => Buffer.concat([u32(r.length + 8), u32(l.nameHashes?.[i] ?? i + 1), r]));
   return Buffer.concat([u32(l.classHash), u32(l.resources.length), Buffer.from([1, 1]), ...res]);
 }
 

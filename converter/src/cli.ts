@@ -11,6 +11,8 @@ import { unpackEntries } from "./unpack.ts";
 
 const CONVERTER_DIR = path.resolve(import.meta.dirname, "..");
 const OUT_DIR = path.join(CONVERTER_DIR, "out");
+/** Converted game assets, imported by the Godot project (gitignored). */
+const GAME_ASSETS_DIR = path.resolve(CONVERTER_DIR, "../game/assets/converted");
 
 /** BOZ_CONFIG overrides the default converter/local.json (used by tests). */
 function config(): Config {
@@ -47,13 +49,13 @@ function report(): void {
 }
 
 function exportKinoScene(): void {
-  const s = exportKino(config().dzPath, OUT_DIR);
+  const s = exportKino(config().dzPath, GAME_ASSETS_DIR);
   const unplaced = s.unplaced.length ? ` (${s.unplaced.join(", ")})` : "";
   console.log(`room models ${s.models}: ${s.placed} placed, ${s.unplaced.length} unplaced${unplaced}`);
   console.log(`textures ${s.textures} written, ${s.unsupportedTextures} unsupported; missing materials ${s.missingMaterials}; materials without a base texture ${s.missingTextures}`);
-  console.log(`failed ${s.failed.length}`);
+  console.log(`sky faces ${s.skyFaces}; failed ${s.failed.length}`);
   for (const f of s.failed) console.log(`  FAILED ${f}`);
-  console.log(`-> ${path.join(OUT_DIR, "kino", "kino.gltf")}`);
+  console.log(`-> ${path.join(GAME_ASSETS_DIR, "kino", "kino.gltf")}`);
 }
 
 const commands: Record<string, (args: string[]) => void> = { unpack, report, "export-kino": exportKinoScene };

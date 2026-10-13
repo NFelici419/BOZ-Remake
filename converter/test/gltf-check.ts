@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 type Doc = Record<string, any>;
 const COMPONENTS: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
-const BYTES: Record<number, number> = { 5123: 2, 5125: 4, 5126: 4 };
+const BYTES: Record<number, number> = { 5121: 1, 5123: 2, 5125: 4, 5126: 4 };
 
 /** Structural glTF 2.0 checks the converter relies on (no external validator is a dependency). */
 export function assertValidGltf(doc: Doc, bin: Buffer): void {
@@ -32,7 +32,7 @@ export function assertValidGltf(doc: Doc, bin: Buffer): void {
       assert.equal(pos.type, "VEC3");
       assert.equal(pos.min?.length, 3, "POSITION min");
       assert.equal(pos.max?.length, 3, "POSITION max");
-      for (const uv of ["TEXCOORD_0", "TEXCOORD_1"]) if (uv in p.attributes) assert.equal(doc.accessors[p.attributes[uv]].count, pos.count);
+      for (const uv of ["TEXCOORD_0", "TEXCOORD_1", "COLOR_0"]) if (uv in p.attributes) assert.equal(doc.accessors[p.attributes[uv]].count, pos.count);
       const idx = doc.accessors[p.indices];
       assert.ok(idx.componentType === 5123 || idx.componentType === 5125);
       assert.equal(idx.count % 3, 0, "triangle list");

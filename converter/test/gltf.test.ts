@@ -42,6 +42,26 @@ test("uint32 indices when needed", () => {
   assertValidGltf(doc, bin);
 });
 
+test("vertex colours become normalized COLOR_0", () => {
+  const b = new GltfBuilder();
+  const colors = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0]);
+  b.addNode(node(b.addMesh("mesh", [{ ...tri(), colors, material: b.addMaterial("m", null, null) }])));
+  const { doc, bin } = build(b);
+  const acc = doc.accessors[doc.meshes[0].primitives[0].attributes.COLOR_0];
+  assert.deepEqual([acc.componentType, acc.normalized, acc.type, acc.count], [5121, true, "VEC4", 3]);
+  const view = doc.bufferViews[acc.bufferView];
+  assert.deepEqual([...bin.subarray(view.byteOffset, view.byteOffset + 12)], [...colors]);
+  assertValidGltf(doc, bin);
+});
+
+test("alpha-masked material", () => {
+  const b = new GltfBuilder();
+  const m = b.addMaterial("m", b.addImage("textures/a.png"), null, undefined, true);
+  const { doc } = build(b);
+  assert.deepEqual([doc.materials[m].alphaMode, doc.materials[m].alphaCutoff], ["MASK", 0.5]);
+  assert.equal(doc.materials[b.addMaterial("o", null, null)]?.alphaMode, undefined);
+});
+
 test("missing material falls back to grey", () => {
   const b = new GltfBuilder();
   const m = b.addMaterial("missing:0x1", null, null);

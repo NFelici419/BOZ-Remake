@@ -19,6 +19,9 @@ export const MIRROR_X = false;
 const ROOM_DIR = "levels/kino/";
 /** Kino groups whose models are not static room geometry. */
 const NOT_ROOMS = new Set(["kino_dynamics", "kino_skyboxes_shared", "effects_shared"]);
+const SKY_GROUP = "kino_skyboxes_shared";
+/** Cubemap face file names in the stored (GL) face order. */
+const SKY_FACES = ["px.png", "nx.png", "py.png", "ny.png", "pz.png", "nz.png"];
 const MODEL = classHash("CIwModel");
 const MATERIAL = classHash("CIwMaterial");
 const TEXTURE = classHash("CIwTexture");
@@ -32,6 +35,7 @@ export type ExportStats = {
   unsupportedTextures: number;
   missingMaterials: number; // distinct material hashes with no usable material
   missingTextures: number; // distinct materials with no usable base texture
+  skyFaces: number; // skybox cubemap faces written to sky/
   failed: string[]; // resources that failed to decode, with the error
 };
 
@@ -48,6 +52,33 @@ export function nodePlacement(t: Transform, scale = POSITION_SCALE, mirrorX = MI
   return mirrorX
     ? { translation: [-x * scale, y * scale, z * scale], rotation: [qx, -qy, -qz, qw], scale: [-scale, scale, scale] }
     : { translation: [x * scale, y * scale, z * scale], rotation: [qx, qy, qz, qw], scale: [scale, scale, scale] };
+}
+
+/** True when any texel is less than half opaque: the material needs alpha cut-out. */
+function hasCutout(rgba: Buffer): boolean {
+  for (let i = 3; i < rgba.length; i += 4) if (rgba[i] < 128) return true;
+  return false;
+}
+
+/** Writes the first cubemap of the skybox group as six PNGs plus sky.json; returns the faces written. */
+function exportSky(groups: Group[], dir: string, failed: string[]): number {
+  const group = groups.find((g) => g.path.startsWith(ROOM_DIR) && g.base === SKY_GROUP);
+  for (const ref of group?.refs ?? []) {
+    if (ref.classHash !== TEXTURE) continue;
+    const label = `${group!.base} CIwTexture#${ref.index}`;
+    try {
+      const t = decodeTexture(resourceBytes(group!.data, ref));
+      if (t.kind !== "cubemap") continue;
+      fs.mkdirSync(dir, { recursive: true });
+      t.faces.forEach((face, i) => fs.writeFileSync(path.join(dir, SKY_FACES[i]), encodePng(t.width, t.height, face)));
+      const json = { faces: SKY_FACES, width: t.width, height: t.height, source: `${group!.path} CIwTexture#${ref.index}` };
+      fs.writeFileSync(path.join(dir, "sky.json"), JSON.stringify(json, null, 2) + "\n");
+      return SKY_FACES.length;
+    } catch (e) {
+      failed.push(`${label}: ${message(e)}`);
+    }
+  }
+  return 0;
 }
 
 function loadGroups(dzPath: string, failed: string[]): Group[] {
@@ -76,7 +107,7 @@ function loadGroups(dzPath: string, failed: string[]): Group[] {
  * textures become flat grey.
  */
 export function exportKino(dzPath: string, outDir: string): ExportStats {
-  const stats: ExportStats = { models: 0, placed: 0, unplaced: [], textures: 0, unsupportedTextures: 0, missingMaterials: 0, missingTextures: 0, failed: [] };
+  const stats: ExportStats = { models: 0, placed: 0, unplaced: [], textures: 0, unsupportedTextures: 0, missingMaterials: 0, missingTextures: 0, skyFaces: 0, failed: [] };
   const groups = loadGroups(dzPath, stats.failed);
   const out = path.join(outDir, "kino");
   fs.rmSync(out, { recursive: true, force: true });
@@ -103,6 +134,7 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
 
   const gltf = new GltfBuilder();
   const images = new Map<number, number | null>();
+  const cutout = new Set<number>(); // image indices with a texel below half alpha
   const image = (hash: number): number | null => {
     if (images.has(hash)) return images.get(hash)!;
     let index: number | null = null;
@@ -114,6 +146,7 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
           const file = `${loc.group.base}_${loc.ref.index}.png`;
           fs.writeFileSync(path.join(out, "textures", file), encodePng(t.width, t.height, t.rgba));
           index = gltf.addImage(`textures/${file}`, { source: loc.group.path, resource: `CIwTexture#${loc.ref.index}` });
+          if (hasCutout(t.rgba)) cutout.add(index);
           stats.textures++;
         } else {
           stats.unsupportedTextures++; // cubemaps are not room textures in 2a
@@ -156,7 +189,8 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
     if (!gltfMaterials.has(key)) {
       const dropped = (base !== null && useBase === null) || (mat.texture1 !== null && !hasUv1);
       const name = `mat:${loc.group.base}#${loc.ref.index}${dropped ? " (no uv)" : ""}`;
-      gltfMaterials.set(key, gltf.addMaterial(name, useBase, lightmap, { source: loc.group.path, resource: `CIwMaterial#${loc.ref.index}` }));
+      const extras = { source: loc.group.path, resource: `CIwMaterial#${loc.ref.index}` };
+      gltfMaterials.set(key, gltf.addMaterial(name, useBase, lightmap, extras, useBase !== null && cutout.has(useBase)));
     }
     return gltfMaterials.get(key)!;
   };
@@ -185,6 +219,7 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
           positions: model.positions,
           uv0: model.uv0 ?? undefined,
           uv1: model.uv1 ?? undefined,
+          colors: model.colors ?? undefined,
           indices: m.indices,
           material: material(model.materialHashes[m.materialIndex], model.uv0 !== null, model.uv1 !== null),
         }));
@@ -204,6 +239,7 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
     }
   }
 
+  stats.skyFaces = exportSky(groups, path.join(out, "sky"), stats.failed);
   stats.missingMaterials = missing.size;
   stats.missingTextures = noBaseTexture.size;
   const { json, bin } = gltf.toFiles("kino");

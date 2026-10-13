@@ -4,7 +4,7 @@ import { FormatError } from "../src/bin-reader.ts";
 import { classHash } from "../src/class-names.ts";
 import { decodeModel } from "../src/model.ts";
 import { listResources, resourceBytes } from "../src/resources.ts";
-import { colsBlock, model, triList, uvs, verts } from "./fixtures.ts";
+import { cols, colsGrey, colsRgba, model, opaqueBlock, triList, uvs, verts } from "./fixtures.ts";
 import { realKinoGroup, realKinoGroups } from "./helpers.ts";
 
 const QUAD = [[1, 2, 3], [-4, 5, -6], [7, -8, 9]];
@@ -22,11 +22,33 @@ test("decodes synthetic model", () => {
 });
 
 test("decodes lightmap uvs and skips unconsumed blocks", () => {
-  const cols = colsBlock(Buffer.from("\x00\x01\xff\xff\xff\xff\xff\xff\xff", "latin1"));
+  const norms = opaqueBlock("CIwModelBlockNorms", Buffer.from("\x00\x01\xff\xff\xff\xff\xff\xff\xff", "latin1"));
   const uv = [[0, 0], [4096, 0], [0, 4096]];
-  const m = decodeModel(model([verts(QUAD, 0, []), uvs("CIwModelBlockGLUVs", uv), uvs("CIwModelBlockGLUVs2", uv), cols, triList(1, [2, 1, 0]), triList(0, [0, 1, 2])], [1, 2]));
+  const m = decodeModel(model([verts(QUAD, 0, []), uvs("CIwModelBlockGLUVs", uv), uvs("CIwModelBlockGLUVs2", uv), norms, triList(1, [2, 1, 0]), triList(0, [0, 1, 2])], [1, 2]));
   assert.deepEqual([...m.uv1!], [0, 0, 1, 0, 0, 1]);
   assert.deepEqual(m.meshes.map((x) => x.materialIndex), [1, 0]);
+});
+
+test("decodes planar RGBA vertex colours", () => {
+  const rgba = [[255, 0, 0, 255], [0, 128, 0, 255], [1, 2, 3, 255]];
+  const m = decodeModel(model([verts(QUAD, 0, []), colsRgba(rgba), triList(0, [0, 1, 2])], [1]));
+  assert.deepEqual([...m.colors!], rgba.flat());
+  const withAlpha = decodeModel(model([verts(QUAD, 0, []), colsRgba([[9, 9, 9, 0], [9, 9, 9, 64], [9, 9, 9, 255]], 2), triList(0, [0, 1, 2])], [1]));
+  assert.deepEqual([...withAlpha.colors!].filter((_, i) => i % 4 === 3), [0, 64, 255]);
+});
+
+test("decodes grey vertex colours", () => {
+  const m = decodeModel(model([verts(QUAD, 0, []), colsGrey([255, 100, 0]), triList(0, [0, 1, 2])], [1]));
+  assert.deepEqual([...m.colors!], [255, 255, 255, 255, 100, 100, 100, 255, 0, 0, 0, 255]);
+});
+
+test("model without colours has none", () => {
+  assert.equal(decodeModel(model([verts(QUAD, 0, []), triList(0, [0, 1, 2])], [1])).colors, null);
+});
+
+test("rejects unsupported and mismatched colour blocks", () => {
+  assert.throws(() => decodeModel(model([verts(QUAD, 0, []), cols(4, Buffer.alloc(6), 3), triList(0, [0, 1, 2])], [1])), /RGB565/);
+  assert.throws(() => decodeModel(model([verts(QUAD, 0, []), colsGrey([1, 2]), triList(0, [0, 1, 2])], [1])), /colour count 2/);
 });
 
 test("rejects triangle list whose index count is not a multiple of 3", () => {
@@ -90,4 +112,19 @@ test("every Kino room model decodes", (t) => {
     }
   }
   assert.equal(n, 665);
+});
+
+test("Kino vertex colours: 625 models", (t) => {
+  const groups = realKinoGroups();
+  if (!groups) return t.skip("no local.json");
+  let withColours = 0;
+  for (const g of groups.filter((x) => x.path.startsWith("levels/kino/"))) {
+    for (const ref of listResources(g.data).filter((r) => r.classHash === classHash("CIwModel"))) {
+      const m = decodeModel(resourceBytes(g.data, ref));
+      if (!m.colors) continue;
+      withColours++;
+      assert.equal(m.colors.length, (m.positions.length / 3) * 4);
+    }
+  }
+  assert.equal(withColours, 625);
 });

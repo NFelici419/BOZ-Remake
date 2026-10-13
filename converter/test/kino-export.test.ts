@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { classHash } from "../src/class-names.ts";
 import { exportKino, nodePlacement } from "../src/kino-export.ts";
-import { component, entity, material, model, rgba4444Texture, texture, transform, triList, uvs, verts } from "./fixtures.ts";
+import { component, cubemapTexture, entity, material, model, rgba4444Texture, texture, transform, triList, uvs, verts } from "./fixtures.ts";
 import { assertValidGltf } from "./gltf-check.ts";
 import { buildDz, buildGroup, realSource, tempDir } from "./helpers.ts";
 
@@ -49,7 +49,7 @@ function syntheticArchive(): string {
     name: "room_shared",
     flags: 0,
     lists: [
-      { classHash: classHash("CIwTexture"), resources: [rgba4444Texture(2, 2, [0xf00f, 0x0f0f, 0x00ff, 0xffff]), texture({ format: 0, b18: 0x0a, width: 2, height: 2, pitch: 4, recordSize: 0, payload: Buffer.alloc(8) })].map(body) },
+      { classHash: classHash("CIwTexture"), resources: [rgba4444Texture(2, 2, [0xf000, 0x0f0f, 0x00ff, 0xffff]), texture({ format: 0, b18: 0x0a, width: 2, height: 2, pitch: 4, recordSize: 0, payload: Buffer.alloc(8) })].map(body) },
       { classHash: classHash("CIwMaterial"), resources: [material(59, { 37: 1, 41: 1 }), material(17, { 13: 2 })].map(body) },
       {
         classHash: classHash("CIwModel"),
@@ -72,9 +72,11 @@ function syntheticArchive(): string {
     ],
   });
   const dynamics = buildGroup({ name: "kino_dynamics", flags: 0, lists: [{ classHash: classHash("CIwModel"), resources: [body(model([verts(QUAD, 0, []), triList(0, [0, 1, 2])], [1]))] }] });
+  const sky = buildGroup({ name: "kino_skyboxes_shared", flags: 0, lists: [{ classHash: classHash("CIwTexture"), resources: [body(cubemapTexture([0xf800, 0x07e0, 0x001f, 0xffff, 0xf81f, 0x0000]))], nameHashes: [0x5c1] }] });
   const dir = tempDir();
   const dzPath = path.join(dir, "kino.dz");
   fs.writeFileSync(dzPath, buildDz([
+    { name: "kino_skyboxes_shared.group.bin", dir: "levels\\kino", data: sky },
     { name: "kino_dynamics.group.bin", dir: "levels\\kino", data: dynamics },
     { name: "room_shared.group.bin", dir: "levels\\kino", data: room },
   ]));
@@ -92,7 +94,7 @@ test("synthetic export", () => {
   const stats = exportKino(syntheticArchive(), outDir);
   assert.equal(stats.failed.length, 1);
   assert.match(stats.failed[0], /room_shared#2/);
-  assert.deepEqual({ ...stats, failed: [] }, { models: 4, placed: 2, unplaced: ["room_shared#1"], textures: 1, unsupportedTextures: 1, missingMaterials: 1, missingTextures: 1, failed: [] });
+  assert.deepEqual({ ...stats, failed: [] }, { models: 4, placed: 2, unplaced: ["room_shared#1"], textures: 1, unsupportedTextures: 1, missingMaterials: 1, missingTextures: 1, skyFaces: 6, failed: [] });
 
   const { doc, bin } = readExport(outDir);
   assertValidGltf(doc, bin);
@@ -105,6 +107,7 @@ test("synthetic export", () => {
   const materialOf = (node: { mesh: number }, i: number) => doc.materials[doc.meshes[node.mesh].primitives[i].material];
   const plain = materialOf(n0, 0);
   assert.equal(plain.occlusionTexture, undefined, "no lightmap without TEXCOORD_1");
+  assert.equal(plain.alphaMode, "MASK", "base texture has a transparent texel");
   assert.equal(doc.images[plain.pbrMetallicRoughness.baseColorTexture.index].uri, "textures/room_shared_0.png");
   assert.deepEqual(materialOf(n0, 1).pbrMetallicRoughness.baseColorFactor, [0.5, 0.5, 0.5, 1]);
   assert.equal(materialOf(n0, 2).name, "missing:0x3e7");
@@ -112,6 +115,10 @@ test("synthetic export", () => {
   assert.deepEqual(materialOf(n3, 0).occlusionTexture, { index: plain.pbrMetallicRoughness.baseColorTexture.index, texCoord: 1 });
   assert.deepEqual(doc.images[0].extras, { source: "levels/kino/room_shared.group.bin", resource: "CIwTexture#0" });
 
+  const sky = JSON.parse(fs.readFileSync(path.join(outDir, "kino/sky/sky.json"), "utf8"));
+  assert.deepEqual(sky.faces, ["px.png", "nx.png", "py.png", "ny.png", "pz.png", "nz.png"]);
+  assert.equal(sky.source, "levels/kino/kino_skyboxes_shared.group.bin CIwTexture#0");
+  for (const f of sky.faces) assert.ok(fs.existsSync(path.join(outDir, "kino/sky", f)), f);
   const png = fs.readFileSync(path.join(outDir, "kino/textures/room_shared_0.png"));
   assert.equal(png.toString("latin1", 1, 4), "PNG");
   assert.deepEqual(fs.readdirSync(path.join(outDir, "kino/textures")), ["room_shared_0.png"]);

@@ -1,6 +1,13 @@
 type Extras = Record<string, unknown>;
 
-export type GltfPrimitive = { positions: Float32Array; uv0?: Float32Array; uv1?: Float32Array; indices: Uint16Array | Uint32Array; material: number };
+export type GltfPrimitive = {
+  positions: Float32Array;
+  uv0?: Float32Array;
+  uv1?: Float32Array;
+  colors?: Uint8Array; // RGBA8 per vertex
+  indices: Uint16Array | Uint32Array;
+  material: number;
+};
 export type GltfNode = {
   name: string;
   mesh: number;
@@ -11,6 +18,7 @@ export type GltfNode = {
 };
 
 const FLOAT = 5126;
+const UNSIGNED_BYTE = 5121;
 const UNSIGNED_SHORT = 5123;
 const UNSIGNED_INT = 5125;
 const ARRAY_BUFFER = 34962;
@@ -37,7 +45,7 @@ export class GltfBuilder {
   private bufferViews: object[] = [];
   private chunks: Buffer[] = [];
   private byteLength = 0;
-  private attributeAccessors = new Map<Float32Array, number>();
+  private attributeAccessors = new Map<ArrayBufferView, number>();
 
   /** Returns the existing index when the uri was added before. */
   addImage(uri: string, extras?: Extras): number {
@@ -47,13 +55,14 @@ export class GltfBuilder {
   }
 
   /** The lightmap becomes an occlusion texture on TEXCOORD_1; no base image gives flat grey. */
-  addMaterial(name: string, baseColorImage: number | null, lightmapImage: number | null, extras?: Extras): number {
+  addMaterial(name: string, baseColorImage: number | null, lightmapImage: number | null, extras?: Extras, alphaMask = false): number {
     const pbr = baseColorImage === null ? { baseColorFactor: GREY } : { baseColorTexture: { index: baseColorImage } };
     return (
       this.materials.push({
         name,
         pbrMetallicRoughness: { ...pbr, metallicFactor: 0, roughnessFactor: 1 },
         ...(lightmapImage !== null && { occlusionTexture: { index: lightmapImage, texCoord: 1 } }),
+        ...(alphaMask && { alphaMode: "MASK", alphaCutoff: 0.5 }),
         ...(extras && { extras }),
       }) - 1
     );
@@ -65,6 +74,7 @@ export class GltfBuilder {
         POSITION: this.attribute(p.positions, "VEC3"),
         ...(p.uv0 && { TEXCOORD_0: this.attribute(p.uv0, "VEC2") }),
         ...(p.uv1 && { TEXCOORD_1: this.attribute(p.uv1, "VEC2") }),
+        ...(p.colors && { COLOR_0: this.colorAttribute(p.colors) }),
       },
       indices: this.indexAccessor(p.indices),
       material: p.material,
@@ -125,6 +135,16 @@ export class GltfBuilder {
     }
     const index = this.accessors.push(accessor) - 1;
     this.attributeAccessors.set(a, index);
+    return index;
+  }
+
+  /** Normalized unsigned-byte RGBA, the compact glTF vertex colour form. */
+  private colorAttribute(colors: Uint8Array): number {
+    const cached = this.attributeAccessors.get(colors);
+    if (cached !== undefined) return cached;
+    const accessor = { bufferView: this.view(copy(colors), ARRAY_BUFFER), componentType: UNSIGNED_BYTE, normalized: true, count: colors.length / 4, type: "VEC4" };
+    const index = this.accessors.push(accessor) - 1;
+    this.attributeAccessors.set(colors, index);
     return index;
   }
 

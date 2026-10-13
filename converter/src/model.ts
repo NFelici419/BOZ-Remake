@@ -7,6 +7,7 @@ export type Model = {
   positions: Float32Array; // numVerts*3, raw game units
   uv0: Float32Array | null; // numVerts*2, /4096
   uv1: Float32Array | null; // lightmap, numVerts*2, /4096
+  colors: Uint8Array | null; // numVerts*4 RGBA
   meshes: ModelMesh[];
   materialHashes: number[];
 };
@@ -27,12 +28,13 @@ const VERTS = classHash("CIwModelBlockVerts");
 const UVS = classHash("CIwModelBlockGLUVs");
 const UVS2 = classHash("CIwModelBlockGLUVs2");
 const TRILIST = classHash("CIwModelBlockGLTriList");
+const COLS = classHash("CIwModelBlockCols");
 const UV_SCALE = 4096;
 
 /**
  * Decodes one CIwModel resource (including its size field). Blocks are found
  * from byte 8 by their repeated class hash; Verts, GLUVs, GLUVs2 and
- * GLTriList are consumed and any other block is skipped by scanning to the
+ * GLTriList and Cols are consumed and any other block is skipped by scanning to the
  * next block. The material list (`u32 0, u32 count, count × u32 hash`) follows
  * the last block and ends at the resource end.
  */
@@ -49,6 +51,7 @@ export function decodeModel(res: Buffer): Model {
   let positions: Float32Array | null = null;
   let uv0: Float32Array | null = null;
   let uv1: Float32Array | null = null;
+  let colors: Uint8Array | null = null;
   const meshes: ModelMesh[] = [];
   let numVerts = 0;
 
@@ -75,9 +78,28 @@ export function decodeModel(res: Buffer): Model {
         if (src >= i) throw new FormatError(`vertex ${i} remaps to ${src}`, p + 18 + 6 * packed + 2 * (i - packed));
         positions.copyWithin(i * 3, src * 3, src * 3 + 3);
       }
-    } else if (h === UVS || h === UVS2 || h === TRILIST) {
+    } else if (h === UVS || h === UVS2 || h === TRILIST || h === COLS) {
       if (!positions) throw new FormatError("block before the Verts block", p);
-      if (h === TRILIST) {
+      if (h === COLS) {
+        // Read from the game's loader (0x24220c): a flag byte, then either one
+        // grey byte per vertex (bit 0) or R, G, B, A planes of one byte each.
+        const count = res.readUInt16LE(p + 10);
+        if (count !== numVerts) throw new FormatError(`colour count ${count} != ${numVerts} verts`, p + 10);
+        const flag = res[p + 14];
+        if (flag & 4) throw new FormatError("RGB565 vertex colours (flag 4) are not supported", p + 14);
+        const grey = (flag & 1) !== 0;
+        end = p + 15 + (grey ? count : 4 * count);
+        need(p, end, "Cols");
+        colors = new Uint8Array(count * 4);
+        for (let i = 0; i < count; i++) {
+          if (grey) {
+            colors.fill(res[p + 15 + i], i * 4, i * 4 + 3);
+            colors[i * 4 + 3] = 255;
+          } else {
+            for (let c = 0; c < 4; c++) colors[i * 4 + c] = res[p + 15 + c * count + i];
+          }
+        }
+      } else if (h === TRILIST) {
         const count = res.readUInt16LE(p + 10);
         if (count % 3 !== 0) throw new FormatError(`triangle list has ${count} indices`, p + 10);
         end = p + 22 + 2 * count;
@@ -113,5 +135,5 @@ export function decodeModel(res: Buffer): Model {
   for (const m of meshes) {
     if (m.materialIndex >= materialCount) throw new FormatError(`material index ${m.materialIndex} >= ${materialCount} materials`, p);
   }
-  return { nameHash: res.readUInt32LE(4), positions, uv0, uv1, meshes, materialHashes };
+  return { nameHash: res.readUInt32LE(4), positions, uv0, uv1, colors, meshes, materialHashes };
 }
