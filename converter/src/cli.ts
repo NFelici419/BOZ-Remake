@@ -4,6 +4,7 @@ import { FormatError } from "./bin-reader.ts";
 import { ConfigError, loadConfig, type Config } from "./config.ts";
 import { buildClassNameDictionary } from "./class-names.ts";
 import { readDzIndex, readGroups } from "./dz.ts";
+import { exportKinoData } from "./kino-data.ts";
 import { exportKino } from "./kino-export.ts";
 import { buildReport, renderReportHtml } from "./report.ts";
 import { isKinoEntry } from "./selection.ts";
@@ -58,7 +59,15 @@ function exportKinoScene(): void {
   console.log(`-> ${path.join(GAME_ASSETS_DIR, "kino", "kino.gltf")}`);
 }
 
-const commands: Record<string, (args: string[]) => void> = { unpack, report, "export-kino": exportKinoScene };
+function exportData(): void {
+  const cfg = config();
+  const s = exportKinoData(cfg.dzPath, buildClassNameDictionary(fs.readFileSync(cfg.gameBinaryPath)), GAME_ASSETS_DIR);
+  console.log(`entities ${s.entities}, reflected resources ${s.resources}, failed ${s.failed.length}`);
+  for (const f of s.failed) console.log(`  FAILED ${f}`);
+  console.log(`-> ${path.join(GAME_ASSETS_DIR, "kino", "data")}`);
+}
+
+const commands: Record<string, (args: string[]) => void> = { unpack, report, "export-kino": exportKinoScene, "export-data": exportData };
 
 function main(argv: string[]): number {
   const [cmd, ...args] = argv;

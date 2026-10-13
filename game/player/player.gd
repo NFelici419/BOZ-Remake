@@ -10,7 +10,18 @@ var dims: Dictionary
 var tuning: Dictionary
 var feel: Dictionary
 var camera: Camera3D
+var player_id := 0
+var max_health := 230.0
+var health := 230.0
+var _heal_delay := 1.0
+var _heal_time := 7.0
+var _since_hit := 0.0
 var _pitch := 0.0
+var spawn_point := Vector3.ZERO
+var _select_held := 0.0
+
+const RESCUE_HOLD_SECONDS := 1.5
+const FALL_LIMIT := -30.0
 
 
 func _init(player_dims: Dictionary, approximations: Dictionary, settings: Dictionary) -> void:
@@ -18,6 +29,13 @@ func _init(player_dims: Dictionary, approximations: Dictionary, settings: Dictio
 	tuning = approximations
 	feel = settings
 	name = "Player"
+	collision_layer = Zombie.LAYER_PLAYER
+	collision_mask = Zombie.LAYER_WORLD | Zombie.LAYER_ZOMBIE
+	var template: Dictionary = KinoData.player_template().get("CHealth", {})
+	max_health = template.get("m_MaxHealth", 230.0)
+	health = max_health
+	_heal_delay = template.get("m_HealDelay", 1000.0) / 1000.0
+	_heal_time = template.get("m_MaxHealingTime", 7000.0) / 1000.0
 	var step: float = tuning.step_height
 	# Capsule rides step_height above the feet; a separation ray below it
 	# acts as legs, so the body glides up stairs instead of catching on them.
@@ -43,7 +61,43 @@ func _init(player_dims: Dictionary, approximations: Dictionary, settings: Dictio
 	add_child(camera)
 
 
+func respawn() -> void:
+	global_position = spawn_point
+	velocity = Vector3.ZERO
+	print("player respawned at start")
+
+
+## Zombie hits; health regenerates fully m_MaxHealingTime after m_HealDelay (original CHealth).
+func take_damage(amount: float) -> void:
+	if GameState.is_over:
+		return
+	health = maxf(health - amount, 0.0)
+	_since_hit = 0.0
+	GameState.health_changed.emit(player_id, health, max_health)
+	if health <= 0.0:
+		GameState.player_died(player_id)
+
+
+func _process(delta: float) -> void:
+	# Way out of collision snags: hold Select to return to the start; falling out of the map does it automatically.
+	if Input.is_action_pressed("debug_overlay"):
+		_select_held += delta
+		if _select_held >= RESCUE_HOLD_SECONDS:
+			_select_held = -INF
+			respawn()
+	else:
+		_select_held = 0.0
+	if global_position.y < FALL_LIMIT:
+		respawn()
+	_since_hit += delta
+	if health < max_health and health > 0.0 and _since_hit >= _heal_delay:
+		health = minf(health + max_health / _heal_time * delta, max_health)
+		GameState.health_changed.emit(player_id, health, max_health)
+
+
 func _physics_process(delta: float) -> void:
+	if GameState.is_over:
+		return
 	var pad := _pad()
 	var move := Stick.shape(_axes(pad, JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y), feel.move_deadzone, feel.response_exponent)
 	var look := Stick.shape(_axes(pad, JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y), feel.look_deadzone, feel.response_exponent)

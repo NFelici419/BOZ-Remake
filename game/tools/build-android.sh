@@ -1,5 +1,5 @@
 #!/bin/sh
-# Converter export -> Godot import -> debug APK -> install and launch on the
+# Converter export (scene + gameplay data) -> Godot import -> navmesh bake -> debug APK -> install and launch on the
 # connected device -> app log. Run from anywhere: game/tools/build-android.sh
 #   --no-convert   reuse game/assets/converted as is
 #   --no-install   stop after building the APK
@@ -20,12 +20,14 @@ for arg in "$@"; do
 done
 
 if [ $CONVERT = 1 ]; then
-  echo "== converter: export-kino"
-  (cd "$ROOT/converter" && npm run --silent boz -- export-kino)
+  echo "== converter: export-kino + export-data"
+  (cd "$ROOT/converter" && npm run --silent boz -- export-kino && npm run --silent boz -- export-data)
 fi
 mkdir -p "$ROOT/build"
 echo "== godot: import"
 "$GODOT" --headless --path "$ROOT/game" --import > "$ROOT/build/import.log" 2>&1
+echo "== godot: bake navmesh"
+"$GODOT" --headless --path "$ROOT/game" --script res://tools/bake_navmesh.gd 2>&1 | grep "^navmesh"
 echo "== godot: tests"
 status=0
 "$GODOT" --headless --path "$ROOT/game" --script res://tests/run.gd > "$ROOT/build/tests.log" 2>&1 || status=$?

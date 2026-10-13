@@ -1,11 +1,29 @@
 {
 	"_notes": "Values not found in the original data yet (parent spec section 5). Replace each with converted data when it is located.",
-	"walk_speed": 4.0,
+	"walk_speed": 4,
 	"sprint_multiplier": 1.5,
 	"crouch_multiplier": 0.5,
-	"jump_velocity": 4.0,
+	"jump_velocity": 4,
 	"gravity": 9.8,
 	"step_height": 0.4,
-	"start_position": [5.0, 4.0, 27.68],
-	"start_position_source": "metres; game-unit position (500, 400, 2768) of the player template entity (ingame CIsEntitySpec#185); not confirmed as the real start"
+	"start_position": [
+		5,
+		4,
+		27.68
+	],
+	"start_position_source": "metres; game-unit position (500, 400, 2768) of the player template entity (ingame CIsEntitySpec#185); not confirmed as the real start",
+	"start_points": 500,
+	"zombie_gait_speeds": [
+		1,
+		1.6,
+		3,
+		4.6
+	],
+	"zombie_gait_speeds_source": "m/s for walk, walk fast, run, sprint; the data has only per-gait modifiers (CAIControllerZombie), base speeds come from animations not yet decoded",
+	"zombie_attack_interval": 1.2,
+	"zombie_attack_radius_factor": 0.5,
+	"zombie_attack_radius_source": "CAIControllerZombie.attackingRadius 220 (2.2 m) looks like the attack-start distance; halved for a swipe that lands",
+	"weapon_fire_interval": 0.15,
+	"weapon_reload_seconds": 1.7,
+	"knife_cooldown": 0.6
 }

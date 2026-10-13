@@ -1,9 +1,10 @@
 class_name DebugOverlay
 extends CanvasLayer
-## FPS and player position, toggled with Select (action "debug_overlay").
+## FPS and player position, toggled with a short press of Select (holding it is the rescue teleport).
 
 var player: Node3D
 var _label := Label.new()
+var _held := 0.0
 
 
 func _init(target: Node3D) -> void:
@@ -16,9 +17,13 @@ func _init(target: Node3D) -> void:
 	add_child(_label)
 
 
-func _process(_delta: float) -> void:
-	if Input.is_action_just_pressed("debug_overlay"):
-		visible = not visible
+func _process(delta: float) -> void:
+	if Input.is_action_pressed("debug_overlay"):
+		_held += delta
+	elif _held > 0.0:
+		if _held < 0.5:
+			visible = not visible
+		_held = 0.0
 	if not visible:
 		return
 	var p := player.global_position
