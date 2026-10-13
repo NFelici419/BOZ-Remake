@@ -2,8 +2,12 @@ class_name RoundDirector
 extends Node
 ## Runs rounds from the original wave chain (CLevel.m_StartingWavesSP by
 ## difficulty, then CWave.m_NextWave, then CWaveRepeatable with its
-## multipliers). Spawns at the active area's spawn points; window spawns enter
-## at their barricade. Special (hellhound) waves are not in yet.
+## multipliers). Spawns at the spawn points of every open area (CArea);
+## window spawns walk to their barricade, tear it down and climb in.
+## Special (hellhound) waves are not in yet.
+
+## Zombie spawn types (CSpawnPoint.spawnType); the remaining type is hellhounds.
+const ZOMBIE_SPAWN_TYPES := ["windows", "ground", "hole"]
 
 const DIFFICULTIES := ["easy", "normal", "hard"]
 
@@ -18,8 +22,10 @@ var _to_spawn := 0
 var _alive := 0
 var _timer := 0.0
 var _spawning := false
-var _spawns: Array = [] # {position: Vector3}
+var _spawns: Array = [] # {position: Vector3, barricade: Barricade, outside: Vector3, inside: Vector3}
+var _spawns_dirty := true
 var _template: Dictionary
+var barricades: Array[Barricade] = []
 
 
 func _init(target: Player, parent: Node3D, approximations: Dictionary, difficulty: String) -> void:
@@ -34,6 +40,9 @@ func _init(target: Player, parent: Node3D, approximations: Dictionary, difficult
 
 
 func _ready() -> void:
+	GameState.areas_opened.connect(func(_areas): _spawns_dirty = true)
+	var start: String = str(KinoData.first("CLevel").get("m_StartingArea", ""))
+	GameState.open_areas([start])
 	_begin_round()
 
 
@@ -90,8 +99,9 @@ func _next_wave() -> void:
 
 
 func _spawn_one() -> void:
-	if _spawns.is_empty():
+	if _spawns_dirty:
 		_spawns = _spawn_entries()
+		_spawns_dirty = false
 		if _spawns.is_empty():
 			push_warning("RoundDirector: no usable spawn points")
 			_to_spawn = 0
@@ -101,7 +111,10 @@ func _spawn_one() -> void:
 	zombie.target = player
 	zombie.died.connect(_on_zombie_died)
 	world.add_child(zombie)
-	zombie.global_position = _spawns.pick_random().position
+	var spawn: Dictionary = _spawns.pick_random()
+	zombie.global_position = spawn.position
+	if spawn.barricade:
+		zombie.enter_through(spawn.barricade, spawn.outside, spawn.inside, tuning.zombie_seconds_per_board)
 	_to_spawn -= 1
 	_alive += 1
 
@@ -125,27 +138,64 @@ func _on_zombie_died(_zombie: Zombie, killer_id: int, subject: String) -> void:
 	print("kill %s; %d left to spawn, %d alive, points %s" % [subject.trim_prefix("SUBJECT_ZOMBIE_SCORE_"), _to_spawn, _alive, GameState.points.values()])
 
 
-## Entry points on the navmesh for the starting area's spawn points.
+## Where zombies appear: every zombie spawn point of the open areas. Window
+## spawns get their barricade (same name prefix, else the nearest) and walk in.
 func _spawn_entries() -> Array:
 	var map := world.get_world_3d().navigation_map
-	var area_name: String = str(KinoData.first("CLevel").get("m_StartingArea", ""))
-	var spawn_names: Array = KinoData.resources.get("CArea", {}).get(area_name, {}).get("m_SpawnPoints", [])
-	var barricades := KinoData.entities_with("CBarricade").map(func(e): return KinoData.world(e.position))
 	var out := []
-	for spawn_name in spawn_names:
-		var e := KinoData.entity_named(spawn_name)
-		if e.is_empty() or not e.has("position"):
-			continue
-		var p := KinoData.world(e.position)
-		if str(e.components.CSpawnPoint.get("spawnType", "")) == "windows":
-			var nearest: Variant = _nearest(barricades, p, 6.0)
-			if nearest != null:
-				p = nearest + (nearest - p).normalized() * 1.0
-		var on_mesh := NavigationServer3D.map_get_closest_point(map, p)
-		if on_mesh.distance_to(p) < 3.0:
-			out.append({"position": on_mesh + Vector3.UP * 0.1})
-	print("RoundDirector: %d of %d spawn points usable in %s" % [out.size(), spawn_names.size(), area_name])
+	for area in GameState.open:
+		for spawn_name in KinoData.resources.get("CArea", {}).get(area, {}).get("m_SpawnPoints", []):
+			var e := KinoData.entity_named(spawn_name)
+			if e.is_empty() or not e.has("position"):
+				continue
+			var kind := str(e.components.CSpawnPoint.get("spawnType", ""))
+			if kind not in ZOMBIE_SPAWN_TYPES:
+				continue
+			var p := KinoData.world(e.position)
+			var entry := {"position": p, "barricade": null, "outside": p, "inside": p}
+			if kind == "windows":
+				var window := _barricade_for(str(e.components.get("CIsNamed", {}).get("0x7c9b0c46", "")), p)
+				if window == null:
+					continue
+				# The window normal; the outside face is the one on the spawn side.
+				var normal := window.global_basis.z
+				normal.y = 0.0
+				normal = normal.normalized()
+				if normal.dot(p - window.global_position) < 0.0:
+					normal = -normal
+				var base := window.global_position
+				entry.barricade = window
+				entry.outside = NavigationServer3D.map_get_closest_point(map, base + normal * 0.7)
+				entry.inside = NavigationServer3D.map_get_closest_point(map, base - normal * 0.9)
+				var start := NavigationServer3D.map_get_closest_point(map, p)
+				if start.distance_to(p) > 6.0:
+					continue
+				entry.position = start
+			elif kind == "hole":
+				entry.position = p # crawlers drop from the ceiling
+			else:
+				var on_mesh := NavigationServer3D.map_get_closest_point(map, p)
+				if on_mesh.distance_to(p) > 3.0:
+					continue
+				entry.position = on_mesh + Vector3.UP * 0.1
+			out.append(entry)
+	print("RoundDirector: %d zombie spawn points in %d open areas" % [out.size(), GameState.open.size()])
 	return out
+
+
+## The barricade a window spawn belongs to: matching name prefix, else nearest within 6 m (3D).
+func _barricade_for(spawn_name: String, p: Vector3) -> Barricade:
+	var prefix := spawn_name.get_slice("_", 0).to_lower()
+	var best: Barricade = null
+	var best_d := 6.0
+	for window in barricades:
+		var d := window.global_position.distance_to(p)
+		if window.name.to_lower().begins_with(prefix):
+			return window
+		if d < best_d:
+			best_d = d
+			best = window
+	return best
 
 
 static func _nearest(points: Array, p: Vector3, max_distance: float) -> Variant:

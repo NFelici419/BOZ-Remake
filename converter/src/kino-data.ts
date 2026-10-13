@@ -60,7 +60,10 @@ export function decodeEntity(res: Buffer, names: Names): Omit<DecodedEntity, "id
  * CWave, CZombieConfiguration, CLevel, CScoreConfig).
  */
 /** Generated names whose hashes the game uses but whose strings are not in the binary (e.g. "wave2"). */
-const CANDIDATE_NAMES = Array.from({ length: 300 }, (_, i) => `wave${i + 1}`);
+const WEAPON_NAMES = "m16 m14 pm63 spectre stakeout mp40 mp5k ak74u mpl olympia famas galil g11 commando fn_fal hk21 rpk spas12 hs10 python thundergun".split(" ");
+/** CSpawnPoint.spawnType values found by hashing ("windows" and "ground" are in the binary). */
+const SPAWN_TYPES = ["hole"];
+const CANDIDATE_NAMES = [...Array.from({ length: 300 }, (_, i) => `wave${i + 1}`), ...WEAPON_NAMES, ...SPAWN_TYPES];
 
 export function exportKinoData(dzPath: string, dict: Map<number, string>, outDir: string): DataStats {
   const known = new Map(dict);

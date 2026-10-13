@@ -82,6 +82,15 @@ func score(subject: String) -> int:
 	return 0
 
 
+## Per-round cap for a score subject (CScoreConfig.m_ScoreLimits), 0 if none.
+func score_limit(subject: String) -> int:
+	for pair in first("CScoreConfig").get("m_ScoreLimits", []):
+		for key in pair:
+			if pair[key] is String and pair[key] == subject:
+				return int(pair.get("score", 0))
+	return 0
+
+
 ## The zombie template's CAIControllerZombie / CHealth / CRigCollision data.
 func zombie_template() -> Dictionary:
 	for e in entities:

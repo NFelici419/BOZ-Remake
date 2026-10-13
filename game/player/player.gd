@@ -18,6 +18,12 @@ var _heal_time := 7.0
 var _since_hit := 0.0
 var _pitch := 0.0
 var spawn_point := Vector3.ZERO
+var weapon: Weapon
+## The interactable in reach (nearest), for the HUD prompt.
+var focus: Interactable
+var _west_held := 0.0
+var _west_used := false
+var _repeat_timer := 0.0
 var _select_held := 0.0
 
 const RESCUE_HOLD_SECONDS := 1.5
@@ -30,7 +36,7 @@ func _init(player_dims: Dictionary, approximations: Dictionary, settings: Dictio
 	feel = settings
 	name = "Player"
 	collision_layer = Zombie.LAYER_PLAYER
-	collision_mask = Zombie.LAYER_WORLD | Zombie.LAYER_ZOMBIE
+	collision_mask = Zombie.LAYER_WORLD | Zombie.LAYER_ZOMBIE | Zombie.LAYER_BARRICADE
 	var template: Dictionary = KinoData.player_template().get("CHealth", {})
 	max_health = template.get("m_MaxHealth", 230.0)
 	health = max_health
@@ -61,6 +67,41 @@ func _init(player_dims: Dictionary, approximations: Dictionary, settings: Dictio
 	add_child(camera)
 
 
+## West: a tap reloads; holding it near something uses it (buy, open, repair).
+func _update_use(delta: float) -> void:
+	focus = _nearest_interactable()
+	if Input.is_action_pressed("reload"):
+		_west_held += delta
+		if focus and not focus.prompt(self).is_empty():
+			if not _west_used and _west_held >= tuning.use_hold_seconds:
+				_west_used = true
+				_repeat_timer = tuning.repair_seconds_per_board
+				focus.use(self)
+			elif _west_used and focus.repeats():
+				_repeat_timer -= delta
+				if _repeat_timer <= 0.0:
+					_repeat_timer = tuning.repair_seconds_per_board
+					focus.use(self)
+	else:
+		if _west_held > 0.0 and not _west_used and weapon:
+			weapon.request_reload()
+		_west_held = 0.0
+		_west_used = false
+
+
+func _nearest_interactable() -> Interactable:
+	var best: Interactable = null
+	var best_d := INF
+	for node in get_tree().get_nodes_in_group("interactables"):
+		var it := node as Interactable
+		if it.in_reach(self):
+			var d := it.global_position.distance_to(global_position)
+			if d < best_d:
+				best_d = d
+				best = it
+	return best
+
+
 func respawn() -> void:
 	global_position = spawn_point
 	velocity = Vector3.ZERO
@@ -89,6 +130,7 @@ func _process(delta: float) -> void:
 		_select_held = 0.0
 	if global_position.y < FALL_LIMIT:
 		respawn()
+	_update_use(delta)
 	_since_hit += delta
 	if health < max_health and health > 0.0 and _since_hit >= _heal_delay:
 		health = minf(health + max_health / _heal_time * delta, max_health)

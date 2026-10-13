@@ -25,5 +25,12 @@
 	"zombie_attack_radius_source": "CAIControllerZombie.attackingRadius 220 (2.2 m) looks like the attack-start distance; halved for a swipe that lands",
 	"weapon_fire_interval": 0.15,
 	"weapon_reload_seconds": 1.7,
-	"knife_cooldown": 0.6
+	"knife_cooldown": 0.6,
+	"shotgun_pellets": 8,
+	"shotgun_fire_interval": 0.6,
+	"shotgun_spread_degrees_per_unit": 8,
+	"weapon_fire_interval_source": "semi-auto and shotgun rates; automatic and burst weapons use their RPM field from the data",
+	"zombie_seconds_per_board": 1.5,
+	"use_hold_seconds": 0.35,
+	"repair_seconds_per_board": 0.8
 }

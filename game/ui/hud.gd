@@ -8,6 +8,9 @@ var _ammo := Label.new()
 var _crosshair := Label.new()
 var _hurt := ColorRect.new()
 var _over := Label.new()
+var _prompt := Label.new()
+var _weapon := Label.new()
+var player: Player
 
 
 func _init() -> void:
@@ -25,6 +28,14 @@ func _init() -> void:
 	_style(_crosshair, 40, Color(1, 1, 1, 0.8))
 	_crosshair.text = "+"
 	_crosshair.position = Vector2(960 - 12, 540 - 28)
+	_style(_prompt, 40, Color.WHITE)
+	_prompt.position = Vector2(560, 700)
+	_prompt.size = Vector2(800, 60)
+	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_style(_weapon, 34, Color(0.85, 0.85, 0.85))
+	_weapon.position = Vector2(1920 - 300, 1080 - 175)
+	add_child(_prompt)
+	add_child(_weapon)
 	_style(_over, 64, Color(0.85, 0.1, 0.1))
 	_over.position = Vector2(560, 440)
 	_over.visible = false
@@ -50,7 +61,13 @@ static func _style(label: Label, size: int, colour: Color) -> void:
 
 func watch_weapon(weapon: Weapon) -> void:
 	weapon.ammo_changed.connect(func(c, r): _ammo.text = "%d / %d" % [c, r])
+	weapon.weapon_changed.connect(func(n): _weapon.text = n.to_upper())
 	_ammo.text = "%d / %d" % [weapon.clip, weapon.reserve]
+	_weapon.text = weapon.gun().name.to_upper() if weapon.gun() else ""
+
+
+func _process(_delta: float) -> void:
+	_prompt.text = player.focus.prompt(player) if player and player.focus and not GameState.is_over else ""
 
 
 func _on_game_over(rounds: int) -> void:

@@ -9,6 +9,7 @@ signal died(zombie: Zombie, killer_id: int, subject: String)
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
 const LAYER_ZOMBIE := 4
+const LAYER_BARRICADE := 8 # stops players at windows; zombies are walked through by script
 const REPATH_SECONDS := 0.25
 const LIMB_HEIGHT := 0.8 # hits on the torso shape below this height count as limbs
 
@@ -24,6 +25,15 @@ var _agent := NavigationAgent3D.new()
 var _repath := 0.0
 var _attack_cooldown := 0.0
 var _dead := false
+## Window entry: walk to the outside of the barricade, tear the boards, climb in.
+var barricade: Barricade
+var outside_point: Vector3
+var inside_point: Vector3
+var tear_interval := 1.5
+var _tear_timer := 0.0
+enum State { OUTSIDE, TEARING, CLIMBING, CHASING }
+var state := State.CHASING
+var _climb := 0.0
 
 
 ## `template` is KinoData.zombie_template(); `tuning` is approximations.json.
@@ -95,8 +105,66 @@ func _build_body(template: Dictionary, scale: float) -> void:
 	add_child(head_mesh)
 
 
+## Sends this zombie in through a barricaded window.
+func enter_through(window: Barricade, outside: Vector3, inside: Vector3, seconds_per_board: float) -> void:
+	barricade = window
+	outside_point = outside
+	inside_point = inside
+	tear_interval = seconds_per_board
+	state = State.OUTSIDE
+	collision_mask = LAYER_WORLD
+	_agent.target_position = outside
+
+
+## Follows the navmesh path without physics: the routes outside the windows
+## have no floor collision in the room geometry, only navmesh.
+func _walk_towards(point: Vector3, delta: float) -> void:
+	var next := _agent.get_next_path_position() if not _agent.is_navigation_finished() else point
+	var to := next - global_position
+	var step := speed * delta
+	global_position = next if to.length() <= step else global_position + to.normalized() * step
+	to.y = 0.0
+	if to.length() > 0.01:
+		look_at(global_position + to, Vector3.UP)
+
+
+func _window_step(delta: float) -> void:
+	match state:
+		State.OUTSIDE:
+			var to := outside_point - global_position
+			to.y = 0.0
+			if to.length() < 0.45:
+				state = State.TEARING
+				_tear_timer = tear_interval
+				var face := barricade.global_position - global_position
+				face.y = 0.0
+				if face.length() > 0.01:
+					look_at(global_position + face, Vector3.UP)
+			else:
+				_walk_towards(outside_point, delta)
+		State.TEARING:
+			if barricade.is_open():
+				state = State.CLIMBING
+				_climb = 0.0
+				return
+			_tear_timer -= delta
+			if _tear_timer <= 0.0:
+				_tear_timer = tear_interval
+				barricade.tear()
+		State.CLIMBING:
+			collision_mask = 0
+			_climb += delta
+			global_position = outside_point.lerp(inside_point, clampf(_climb / 1.2, 0.0, 1.0)) + Vector3.UP * sin(clampf(_climb / 1.2, 0.0, 1.0) * PI) * 0.8
+			if _climb >= 1.2:
+				state = State.CHASING
+				collision_mask = LAYER_WORLD | LAYER_PLAYER
+
+
 func _physics_process(delta: float) -> void:
 	if _dead or target == null:
+		return
+	if state != State.CHASING:
+		_window_step(delta)
 		return
 	_repath -= delta
 	if _repath <= 0.0:

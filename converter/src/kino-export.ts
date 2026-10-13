@@ -20,6 +20,8 @@ const ROOM_DIR = "levels/kino/";
 /** Kino groups whose models are not static room geometry. */
 const NOT_ROOMS = new Set(["kino_dynamics", "kino_skyboxes_shared", "effects_shared"]);
 const SKY_GROUP = "kino_skyboxes_shared";
+/** Kino groups whose models are props placed by gameplay entities (exported to dynamics.gltf). */
+const DYNAMIC_GROUPS = new Set(["kino_dynamics"]);
 /** Cubemap face file names in the stored (GL) face order. */
 const SKY_FACES = ["px.png", "nx.png", "py.png", "ny.png", "pz.png", "nz.png"];
 const MODEL = classHash("CIwModel");
@@ -36,6 +38,7 @@ export type ExportStats = {
   missingMaterials: number; // distinct material hashes with no usable material
   missingTextures: number; // distinct materials with no usable base texture
   skyFaces: number; // skybox cubemap faces written to sky/
+  dynamicModels: number; // prop models written to dynamics.gltf
   failed: string[]; // resources that failed to decode, with the error
 };
 
@@ -43,6 +46,7 @@ type Group = { path: string; base: string; data: Buffer; refs: ResourceRef[] };
 type Located = { group: Group; ref: ResourceRef };
 
 const hex = (n: number) => `0x${n.toString(16)}`;
+const hex8 = (n: number) => `0x${n.toString(16).padStart(8, "0")}`;
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function nodePlacement(t: Transform, scale = POSITION_SCALE, mirrorX = MIRROR_X): Pick<GltfNode, "translation" | "rotation" | "scale"> {
@@ -150,7 +154,7 @@ function loadGroups(dzPath: string, failed: string[]): Group[] {
  * textures become flat grey.
  */
 export function exportKino(dzPath: string, outDir: string): ExportStats {
-  const stats: ExportStats = { models: 0, placed: 0, unplaced: [], textures: 0, unsupportedTextures: 0, missingMaterials: 0, missingTextures: 0, skyFaces: 0, failed: [] };
+  const stats: ExportStats = { models: 0, placed: 0, unplaced: [], textures: 0, unsupportedTextures: 0, missingMaterials: 0, missingTextures: 0, skyFaces: 0, dynamicModels: 0, failed: [] };
   const groups = loadGroups(dzPath, stats.failed);
   const out = path.join(outDir, "kino");
   fs.rmSync(out, { recursive: true, force: true });
@@ -175,12 +179,12 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
     }
   }
 
-  const gltf = new GltfBuilder();
-  const images = new Map<number, number | null>();
-  const cutout = new Set<number>(); // image indices with a texel below half alpha
-  const image = (hash: number): number | null => {
-    if (images.has(hash)) return images.get(hash)!;
-    let index: number | null = null;
+  // Each texture is decoded and written once; each glTF file gets its own image and material indices.
+  type Png = { file: string; cutout: boolean; source: Record<string, string> };
+  const pngs = new Map<number, Png | null>();
+  const png = (hash: number): Png | null => {
+    if (pngs.has(hash)) return pngs.get(hash)!;
+    let result: Png | null = null;
     const loc = textures.get(hash);
     if (loc) {
       try {
@@ -188,25 +192,23 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
         if (t.kind === "image") {
           const file = `${loc.group.base}_${loc.ref.index}.png`;
           fs.writeFileSync(path.join(out, "textures", file), encodePng(t.width, t.height, t.rgba));
-          index = gltf.addImage(`textures/${file}`, { source: loc.group.path, resource: `CIwTexture#${loc.ref.index}` });
-          if (hasCutout(t.rgba)) cutout.add(index);
+          result = { file, cutout: hasCutout(t.rgba), source: { source: loc.group.path, resource: `CIwTexture#${loc.ref.index}` } };
           stats.textures++;
         } else {
-          stats.unsupportedTextures++; // cubemaps are not room textures in 2a
+          stats.unsupportedTextures++; // cubemaps are not room textures
         }
       } catch (e) {
         stats.failed.push(`${loc.group.base} CIwTexture#${loc.ref.index}: ${message(e)}`);
       }
     }
-    images.set(hash, index);
-    return index;
+    pngs.set(hash, result);
+    return result;
   };
 
   const decoded = new Map<number, Material | null>();
-  const gltfMaterials = new Map<string, number>();
   const noBaseTexture = new Set<number>();
   const missing = new Set<number>();
-  const material = (hash: number, hasUv0: boolean, hasUv1: boolean): number => {
+  const decodedMaterial = (hash: number) => {
     const loc = materials.get(hash);
     if (loc && !decoded.has(hash)) {
       try {
@@ -216,28 +218,63 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
         stats.failed.push(`${loc.group.base} CIwMaterial#${loc.ref.index}: ${message(e)}`);
       }
     }
-    const mat = decoded.get(hash);
-    if (!loc || !mat) {
-      const name = `missing:${hex(hash)}`;
-      missing.add(hash);
-      if (!gltfMaterials.has(name)) gltfMaterials.set(name, gltf.addMaterial(name, null, null));
-      return gltfMaterials.get(name)!;
-    }
-    const base = mat.texture0 === null ? null : image(mat.texture0);
-    if (base === null) noBaseTexture.add(hash);
-    // A texture slot needs its UV set on the primitive, so models without one get a variant.
-    const useBase = hasUv0 ? base : null;
-    const lightmap = hasUv1 && mat.texture1 !== null ? image(mat.texture1) : null;
-    const key = `${hash}|${useBase}|${lightmap}`;
-    if (!gltfMaterials.has(key)) {
-      const dropped = (base !== null && useBase === null) || (mat.texture1 !== null && !hasUv1);
-      const name = `mat:${loc.group.base}#${loc.ref.index}${dropped ? " (no uv)" : ""}`;
-      const extras = { source: loc.group.path, resource: `CIwMaterial#${loc.ref.index}` };
-      gltfMaterials.set(key, gltf.addMaterial(name, useBase, lightmap, extras, useBase !== null && cutout.has(useBase)));
-    }
-    return gltfMaterials.get(key)!;
+    return loc ? { loc, mat: decoded.get(hash) ?? null } : null;
   };
 
+  /** Material and image helpers bound to one glTF file. */
+  const writerFor = (gltf: GltfBuilder) => {
+    const images = new Map<number, number | null>();
+    const cutout = new Set<number>(); // image indices with a texel below half alpha
+    const gltfMaterials = new Map<string, number>();
+    const image = (hash: number): number | null => {
+      if (!images.has(hash)) {
+        const p = png(hash);
+        const index = p ? gltf.addImage(`textures/${p.file}`, p.source) : null;
+        if (p?.cutout && index !== null) cutout.add(index);
+        images.set(hash, index);
+      }
+      return images.get(hash)!;
+    };
+    const material = (hash: number, hasUv0: boolean, hasUv1: boolean): number => {
+      const found = decodedMaterial(hash);
+      if (!found || !found.mat) {
+        const name = `missing:${hex(hash)}`;
+        missing.add(hash);
+        if (!gltfMaterials.has(name)) gltfMaterials.set(name, gltf.addMaterial(name, null, null));
+        return gltfMaterials.get(name)!;
+      }
+      const { loc, mat } = found;
+      const base = mat.texture0 === null ? null : image(mat.texture0);
+      if (base === null) noBaseTexture.add(hash);
+      // A texture slot needs its UV set on the primitive, so models without one get a variant.
+      const useBase = hasUv0 ? base : null;
+      const lightmap = hasUv1 && mat.texture1 !== null ? image(mat.texture1) : null;
+      const key = `${hash}|${useBase}|${lightmap}`;
+      if (!gltfMaterials.has(key)) {
+        const dropped = (base !== null && useBase === null) || (mat.texture1 !== null && !hasUv1);
+        const name = `mat:${loc.group.base}#${loc.ref.index}${dropped ? " (no uv)" : ""}`;
+        const extras = { source: loc.group.path, resource: `CIwMaterial#${loc.ref.index}` };
+        gltfMaterials.set(key, gltf.addMaterial(name, useBase, lightmap, extras, useBase !== null && cutout.has(useBase)));
+      }
+      return gltfMaterials.get(key)!;
+    };
+    /** The triangle lists of a model as glTF primitives sharing its vertex arrays. */
+    const primitives = (model: Model) =>
+      model.meshes
+        .filter((m) => m.indices.length > 0)
+        .map((m) => ({
+          positions: model.positions,
+          uv0: model.uv0 ?? undefined,
+          uv1: model.uv1 ?? undefined,
+          colors: model.colors ?? undefined,
+          indices: m.indices,
+          material: material(model.materialHashes[m.materialIndex], model.uv0 !== null, model.uv1 !== null),
+        }));
+    return { primitives };
+  };
+
+  const gltf = new GltfBuilder();
+  const rooms = writerFor(gltf);
   for (const group of groups) {
     if (!group.path.startsWith(ROOM_DIR) || NOT_ROOMS.has(group.base)) continue;
     for (const ref of group.refs) {
@@ -256,16 +293,7 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
         stats.failed.push(`${label}: ${message(e)}`);
         continue;
       }
-      const primitives = model.meshes
-        .filter((m) => m.indices.length > 0)
-        .map((m) => ({
-          positions: model.positions,
-          uv0: model.uv0 ?? undefined,
-          uv1: model.uv1 ?? undefined,
-          colors: model.colors ?? undefined,
-          indices: m.indices,
-          material: material(model.materialHashes[m.materialIndex], model.uv0 !== null, model.uv1 !== null),
-        }));
+      const primitives = rooms.primitives(model);
       if (primitives.length === 0) {
         stats.failed.push(`${label}: no triangles`);
         continue;
@@ -282,12 +310,38 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
     }
   }
 
+  // Dynamic props (doors, barricade boards, the box, perk machines ...) are
+  // placed by gameplay entities at run time: one node per model at the
+  // origin, named by the model name hash that entities reference.
+  const dynamicsGltf = new GltfBuilder();
+  const dynamics = writerFor(dynamicsGltf);
+  const identity: Transform = { position: [0, 0, 0], rotation: [0, 0, 0, 1] };
+  for (const group of groups) {
+    if (!group.path.startsWith(ROOM_DIR) || !DYNAMIC_GROUPS.has(group.base)) continue;
+    for (const ref of group.refs) {
+      if (ref.classHash !== MODEL) continue;
+      const label = `${group.base}#${ref.index}`;
+      try {
+        const primitives = dynamics.primitives(decodeModel(resourceBytes(group.data, ref)));
+        if (primitives.length === 0) throw new Error("no triangles");
+        const source = { source: group.path, resource: `CIwModel#${ref.index}` };
+        const mesh = dynamicsGltf.addMesh(hex8(ref.nameHash), primitives, source);
+        dynamicsGltf.addNode({ name: hex8(ref.nameHash), mesh, ...nodePlacement(identity), extras: source });
+        stats.dynamicModels++;
+      } catch (e) {
+        stats.failed.push(`${label}: ${message(e)}`);
+      }
+    }
+  }
+
   stats.skyFaces = exportSky(groups, path.join(out, "sky"), stats.failed);
   exportPlayer(groups, path.join(out, "player.json"), stats.failed);
   stats.missingMaterials = missing.size;
   stats.missingTextures = noBaseTexture.size;
-  const { json, bin } = gltf.toFiles("kino");
-  fs.writeFileSync(path.join(out, "kino.gltf"), json);
-  fs.writeFileSync(path.join(out, "kino.bin"), bin);
+  for (const [name, builder] of [["kino", gltf], ["dynamics", dynamicsGltf]] as const) {
+    const { json, bin } = builder.toFiles(name);
+    fs.writeFileSync(path.join(out, `${name}.gltf`), json);
+    fs.writeFileSync(path.join(out, `${name}.bin`), bin);
+  }
   return stats;
 }

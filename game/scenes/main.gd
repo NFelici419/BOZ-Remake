@@ -15,8 +15,8 @@ const ACTIONS := {
 	"melee": JOY_BUTTON_RIGHT_STICK,
 	"debug_overlay": JOY_BUTTON_BACK,
 	"pause": JOY_BUTTON_START,
+	"switch_weapon": JOY_BUTTON_Y,
 }
-const NAVMESH := CONVERTED + "navmesh.res"
 
 var _paused_label := Label.new()
 
@@ -29,7 +29,8 @@ func _ready() -> void:
 		push_warning("Converted Kino not found at %s; run the converter's export-kino. Showing a placeholder." % KINO_SCENE)
 		add_child(placeholder_floor())
 	add_child(world_environment())
-	add_navigation()
+	var navigation := NavBaker.new()
+	add_child(navigation)
 	var tuning := read_json("res://data/approximations.json", {})
 	var settings := read_json("res://data/settings.json", {})
 	var dims := read_json(CONVERTED + "player.json", Player.STAND_FALLBACK)
@@ -45,9 +46,13 @@ func _ready() -> void:
 	var weapon := Weapon.new("colt45", tuning)
 	player.camera.add_child(weapon)
 	weapon.owner = player
+	player.weapon = weapon
+	hud.player = player
 	hud.watch_weapon(weapon)
 	if KinoData.loaded:
-		add_child(RoundDirector.new(player, self, tuning, settings.get("difficulty", "normal")))
+		var director := RoundDirector.new(player, self, tuning, settings.get("difficulty", "normal"))
+		add_interactables(director, navigation)
+		add_child(director)
 	add_child(DebugOverlay.new(player))
 	add_child(Capture.new(player))
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -56,6 +61,10 @@ func _ready() -> void:
 	_paused_label.position = Vector2(620, 460)
 	_paused_label.visible = false
 	hud.add_child(_paused_label)
+
+
+func _exit_tree() -> void:
+	Props.release()
 
 
 func _process(_delta: float) -> void:
@@ -70,14 +79,22 @@ func _process(_delta: float) -> void:
 		get_tree().quit()
 
 
-## Zombie navigation from the baked navmesh (tools/bake_navmesh.gd).
-func add_navigation() -> void:
-	if not ResourceLoader.exists(NAVMESH):
-		push_warning("No navmesh at %s; zombies cannot path. Run tools/bake_navmesh.gd." % NAVMESH)
-		return
-	var region := NavigationRegion3D.new()
-	region.navigation_mesh = load(NAVMESH)
-	add_child(region)
+## Doors, barricades and wall-buys from the placed level entities.
+func add_interactables(director: RoundDirector, navigation: NavBaker) -> void:
+	var props := Node3D.new()
+	props.name = "Interactables"
+	add_child(props)
+	for e in KinoData.entities_with("CDoor"):
+		var door := Door.new(e)
+		props.add_child(door)
+		navigation.watch(door)
+	for e in KinoData.entities_with("CBarricade"):
+		var window := Barricade.new(e)
+		props.add_child(window)
+		director.barricades.append(window)
+	for e in KinoData.entities_with("CWeaponChalkOutline"):
+		props.add_child(WallBuy.new(e))
+	navigation.rebake()
 
 
 static func register_input() -> void:

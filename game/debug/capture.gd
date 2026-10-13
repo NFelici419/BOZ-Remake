@@ -5,6 +5,7 @@ extends Node
 ##   --screenshot=path.png             save a frame after the scene settles, then quit
 ##   --wait=seconds                    wait this long before the screenshot (default: 30 frames)
 ##   --bot                             aim at the nearest zombie's head and fire (tests the combat loop)
+##   --points=N / --open=DoorName / --give=weapon   economy test helpers
 
 const SETTLE_FRAMES := 30
 
@@ -14,6 +15,7 @@ var _frames := 0
 var _wait := -1.0
 var _bot := false
 var _bot_timer := 0.0
+var _deferred: Array[String] = []
 
 
 func _init(target: Player) -> void:
@@ -33,14 +35,18 @@ func _init(target: Player) -> void:
 			_wait = arg.substr(7).to_float()
 		elif arg == "--bot":
 			_bot = true
+		elif arg.begins_with("--points=") or arg.begins_with("--open=") or arg.begins_with("--give="):
+			_deferred.append(arg)
 
 
 func _process(delta: float) -> void:
+	_frames += 1
+	if _frames == 5:
+		_run_deferred()
 	if _bot:
 		_run_bot(delta)
 	if _shot_path.is_empty():
 		return
-	_frames += 1
 	_wait -= delta
 	if _frames < SETTLE_FRAMES or _wait > 0.0:
 		return
@@ -73,3 +79,17 @@ func _run_bot(delta: float) -> void:
 	var weapon: Weapon = player.camera.get_node_or_null("Weapon")
 	if weapon:
 		weapon.call("_fire")
+
+
+func _run_deferred() -> void:
+	for arg in _deferred:
+		var value := arg.get_slice("=", 1)
+		if arg.begins_with("--points="):
+			GameState.add_points(player.player_id, value.to_int())
+		elif arg.begins_with("--give="):
+			player.weapon.give(value)
+		elif arg.begins_with("--open="):
+			for node in player.get_tree().get_nodes_in_group("interactables"):
+				if node is Door and node.name == value:
+					node.use(player)
+					print("opened %s: open=%s areas=%s points=%s" % [value, node.is_open, GameState.open.keys(), GameState.points.values()])

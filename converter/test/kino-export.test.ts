@@ -100,7 +100,10 @@ test("synthetic export", () => {
   const stats = exportKino(syntheticArchive(), outDir);
   assert.equal(stats.failed.length, 1);
   assert.match(stats.failed[0], /room_shared#2/);
-  assert.deepEqual({ ...stats, failed: [] }, { models: 4, placed: 2, unplaced: ["room_shared#1"], textures: 1, unsupportedTextures: 1, missingMaterials: 1, missingTextures: 1, skyFaces: 6, failed: [] });
+  assert.deepEqual({ ...stats, failed: [] }, { models: 4, placed: 2, unplaced: ["room_shared#1"], textures: 1, unsupportedTextures: 1, missingMaterials: 1, missingTextures: 1, skyFaces: 6, dynamicModels: 1, failed: [] });
+  const dyn = JSON.parse(fs.readFileSync(path.join(outDir, "kino/dynamics.gltf"), "utf8"));
+  assertValidGltf(dyn, fs.readFileSync(path.join(outDir, "kino/dynamics.bin")));
+  assert.deepEqual(dyn.nodes.map((n: { name: string; translation: number[] }) => [n.name, n.translation]), [["0x00000001", [0, 0, 0]]], "kino_dynamics models sit at the origin, named by name hash");
 
   const { doc, bin } = readExport(outDir);
   assertValidGltf(doc, bin);
