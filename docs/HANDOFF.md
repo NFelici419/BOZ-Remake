@@ -32,7 +32,7 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 | Milestone | State |
 |---|---|
 | 1. Converter basics (unpack `.dz`, parse groups, coverage report) | **Done.** Merged to `master` as PR #1. 34 tests passing. |
-| 2a. Kino geometry export → glTF | **Done** on branch `m2a-kino-geometry-export`, PR open against `master` (merge pending). 93 tests passing. `export-kino` writes 349/351 placed room models, 75,249 triangles, 169 textures, 0 failures. |
+| 2a. Kino geometry export → glTF | **Done** on branch `m2a-kino-geometry-export`, PR open against `master` (merge pending). 95 tests passing. `export-kino` writes 349/351 placed room models, 75,249 triangles, 169 textures, 0 failures. |
 | 2b. Godot project + controller walk-around + Retroid build | Not planned yet. Godot isn't installed. |
 | 3–6. Core combat, economy, Kino features, polish | Not started (see spec §10). |
 
@@ -66,7 +66,7 @@ The data packs were downloaded from Activision's still-live CDN: `http://cdn-boz
 ```bash
 cd /d/Documents/BOZ-Remake/converter
 npm install
-npm test               # 93 tests; real-data tests run when local.json exists
+npm test               # 95 tests; real-data tests run when local.json exists
 npm run typecheck
 npm run boz -- unpack  # Kino files -> out/unpacked (47 entries)
 npm run boz -- report  # out/report.json + out/report.html (46 groups, 0 failed; 4102 decoded, 5 weapon models fail)
@@ -149,7 +149,6 @@ Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In
      - **Lightmaps** are exported as glTF `occlusionTexture` on UV1; Godot treats that as ambient-only AO, so rooms won't look lit yet. Pick the real lightmap path (e.g. a custom shader multiplying UV1).
      - **Alpha:** all materials are OPAQUE; grates and other cut-out textures need alphaMode MASK/BLEND.
      - Vertex colours (`CIwModelBlockCols`) and normals aren't exported; 379 of the 665 Kino models have no lightmap UVs and may look flat.
-   - Small cleanups left from the 2a review: `decodeRgba4444` should check pitch ≥ 2×width; `decodeModel` could require triangle index counts divisible by 3; `readGroups` could move from `report.ts` to `dz.ts`.
 
 ---
 
