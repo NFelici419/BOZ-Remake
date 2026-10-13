@@ -23,7 +23,8 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 - Design spec: [`docs/superpowers/specs/2026-10-11-boz-remake-design.md`](superpowers/specs/2026-10-11-boz-remake-design.md)
 - Milestone 1 plan (done): [`docs/superpowers/plans/2026-10-11-m1-converter-basics.md`](superpowers/plans/2026-10-11-m1-converter-basics.md)
 - Milestone 2a plan (done, PR open): [`docs/superpowers/plans/2026-10-12-m2a-kino-geometry-export.md`](superpowers/plans/2026-10-12-m2a-kino-geometry-export.md)
-- **Milestone 2b plan:** not written yet (next step, see §8).
+- Milestone 2b design: [`docs/superpowers/specs/2026-10-12-m2b-godot-walkaround-design.md`](superpowers/specs/2026-10-12-m2b-godot-walkaround-design.md) (the owner asked to build 2b directly, without a plan document).
+- **2b playtest checklist:** [`docs/playtest/2b-walkaround.md`](playtest/2b-walkaround.md)
 
 ---
 
@@ -33,7 +34,7 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 |---|---|
 | 1. Converter basics (unpack `.dz`, parse groups, coverage report) | **Done.** Merged to `master` as PR #1. 34 tests passing. |
 | 2a. Kino geometry export → glTF | **Done** on branch `m2a-kino-geometry-export`, PR open against `master` (merge pending). 95 tests passing. `export-kino` writes 349/351 placed room models, 75,249 triangles, 169 textures, 0 failures. |
-| 2b. Godot project + controller walk-around + Retroid build | Not planned yet. Godot isn't installed. |
+| 2b. Godot project + controller walk-around + Retroid build | **Built, not yet on the device.** Branch `m2b-godot-walkaround` (stacked on 2a, not pushed). Kino renders in Godot 4.7.2 with the original shader, collision, sky and gamepad player; debug APK builds (34 MB). Remaining: install on the Retroid and run the playtest checklist. |
 | 3–6. Core combat, economy, Kino features, polish | Not started (see spec §10). |
 
 **Pending from the owner:** merge the 2a PR. Its final review was a self-review (no fresh reviewer agent was dispatched); the owner can ask for an independent review before merging.
@@ -46,7 +47,9 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 |---|---|
 | Project repo | `D:\Documents\BOZ-Remake` |
 | Converter (TypeScript, Node 24) | `D:\Documents\BOZ-Remake\converter` |
-| Converter output (gitignored) | `converter/out/`: `unpacked/`, `manifest.json`, `report.json`, `report.html`, `kino/` (`kino.gltf`, `kino.bin`, `textures/*.png`), `preview/` (one-off check renders) |
+| Converter output (gitignored) | `converter/out/`: `unpacked/`, `manifest.json`, `report.json`, `report.html`, `preview/` (one-off check renders) |
+| Godot project | `game/` (Godot 4.7.2, Mobile renderer). Converted assets (gitignored): `game/assets/converted/kino/` (`kino.gltf`, `kino.bin`, `textures/`, `sky/`, `player.json`) |
+| APK + build logs (gitignored) | `build/` |
 | Local config (gitignored) | `converter/local.json` (copy of `local.example.json`) |
 | **Original game data (read-only, never commit)** | `D:\Documents\COD-BOZ-Partially-Decompiled-master\retroid-backup\` |
 | → primary data pack (PC-ready DXT textures) | `blackops_dxt.dz` (341,884,481 bytes) |
@@ -70,8 +73,17 @@ npm test               # 95 tests; real-data tests run when local.json exists
 npm run typecheck
 npm run boz -- unpack  # Kino files -> out/unpacked (47 entries)
 npm run boz -- report  # out/report.json + out/report.html (46 groups, 0 failed; 4102 decoded, 5 weapon models fail)
-npm run boz -- export-kino  # out/kino/kino.gltf + kino.bin + textures/*.png
+npm run boz -- export-kino  # ../game/assets/converted/kino/
 ```
+
+Game (from the repo root):
+
+```bash
+game/tools/build-android.sh               # export-kino, Godot import, headless tests, APK, adb install + launch + logcat
+game/tools/build-android.sh --no-install  # stop after the APK
+```
+
+On the PC: `Godot_v4.7.2-stable_win64.exe --path game` runs the game (gamepad); add `-e` to open the editor. Developer screenshots: `... --path game -- --at=x,y,z,yaw,pitch --screenshot=out.png`.
 
 ---
 
@@ -111,7 +123,8 @@ Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In
   - Ghidra 12.1.4 (`C:\Users\Nelson\Tools\ghidra_12.1.4_PUBLIC`)
   - REA 6.4.0 (global npm install, registered for Claude Code and Claude Desktop)
 - **Already present:** Android SDK at `%LOCALAPPDATA%\Android\Sdk` (adb, emulator, build-tools 35/36/37, platform 36/37), Git 2.55.
-- **Not installed:** Python, `gh` CLI, .NET SDK, **Godot**.
+  - Godot 4.7.2 (`C:UsersNelsonToolsgodot`, editor + `_console.exe`); Android export templates in `%APPDATA%Godotexport_templates.7.2.stable` (Android files only). Godot found the JDK and SDK itself and made its own debug keystore.
+- **Not installed:** Python, `gh` CLI, .NET SDK.
 - **Retroid Pocket 6:** reachable over USB via `adb` (serial `cc7436ad`). The original BOZ 1.0.8 is installed on it and supports armeabi-v7a.
 
 ---
@@ -140,15 +153,15 @@ Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In
 ## 8. Next steps
 
 1. Owner merges the 2a PR (`m2a-kino-geometry-export` → `master`).
-2. **Plan 2b:**
-   - Install Godot 4 (needs download permission; the owner approves downloads individually, with file, source and size).
-   - Import `kino.gltf` and confirm `POSITION_SCALE` / `MIRROR_X` by eye.
-   - Add a first-person controller with gamepad input.
-   - Export to Android and install on the Retroid over adb.
-   - Decide, once viewed in Godot (deferred from 2a):
-     - **Lightmaps** are exported as glTF `occlusionTexture` on UV1; Godot treats that as ambient-only AO, so rooms won't look lit yet. Pick the real lightmap path (e.g. a custom shader multiplying UV1).
-     - **Alpha:** all materials are OPAQUE; grates and other cut-out textures need alphaMode MASK/BLEND.
-     - Vertex colours (`CIwModelBlockCols`) and normals aren't exported; 379 of the 665 Kino models have no lightmap UVs and may look flat.
+2. **Finish 2b:** connect the Retroid, run `game/tools/build-android.sh`, go through `docs/playtest/2b-walkaround.md` against the original. Then push `m2b-godot-walkaround` and open its PR (after the 2a merge, so it shows only 2b).
+3. **Original 2b plan items, status:**
+   - Done: Godot installed; kino.gltf imported; first-person gamepad controller; Android APK export.
+   - Done: lightmaps via the original shader formula (found as GLSL in `ingame/shaders/shaders.group.bin`): vertex colour × texture × lightmap(UV2), unshaded, in a Godot import add-on.
+   - Done: vertex colours decoded from `CIwModelBlockCols` (read from game code at `0x24220c`: flag byte; bit 0 = one grey byte/vertex, else R/G/B/A byte planes; bit 2 = RGB565, unsupported, unused in Kino).
+   - Done: alpha cut-out (MASK) for materials whose texture has transparent texels (101 of 529). Material byte 11 hints at a blend flag but wasn't verified.
+   - Looks right on the PC: `MIRROR_X = false` (lobby graffiti reads correctly). Still to confirm on the device: `POSITION_SCALE`, brightness vs the original, FPS.
+   - Player dimensions come from the data (`player.json`: stand 1.5 m, crouch 0.75 m, capsule r 0.3 / h 2.0). Walk speed, jump, gravity and the start position are in `game/data/approximations.json`.
+   - Known gaps: player start position is the player template's position, not a confirmed spawn; spawn types decoded so far: "windows" ×26, "ground" ×4, "hole" ×12, one unknown ×24. Many gameplay entity classes are present for milestones 3–5 (CDoor ×43, CBarricade ×27, CMysteryBox ×12, CPerk ×11, CPowerSwitch, CPackAPunch, CTeleporter, CPlayerWeapon ×65 wall-buy chalk outlines …).
 
 ---
 
