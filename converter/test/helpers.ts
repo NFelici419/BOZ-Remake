@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { parseDzIndex, readDzEntry } from "../src/dz.ts";
+import { readDzIndex, readGroups } from "../src/dz.ts";
 import { isKinoEntry } from "../src/selection.ts";
 
 const CONVERTER_DIR = path.resolve(import.meta.dirname, "..");
@@ -89,14 +89,14 @@ export function realKinoGroups(): RealGroup[] | null {
   if (kinoCache !== undefined) return kinoCache;
   const src = realSource();
   if (!src) return (kinoCache = null);
-  const size = fs.statSync(src.dzPath).size;
+  const entries = readDzIndex(src.dzPath).entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"));
   const fd = fs.openSync(src.dzPath, "r");
   try {
-    const head = Buffer.alloc(Math.min(1 << 20, size));
-    fs.readSync(fd, head, 0, head.length, 0);
-    kinoCache = parseDzIndex(head, size)
-      .entries.filter((e) => isKinoEntry(e) && e.name.endsWith(".group.bin"))
-      .map((e) => ({ path: e.path, data: readDzEntry(fd, e) }))
+    kinoCache = readGroups(fd, entries)
+      .map(({ entry, data }) => {
+        if (data instanceof Error) throw data;
+        return { path: entry.path, data };
+      })
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   } finally {
     fs.closeSync(fd);

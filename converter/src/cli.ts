@@ -3,9 +3,9 @@ import path from "node:path";
 import { FormatError } from "./bin-reader.ts";
 import { ConfigError, loadConfig, type Config } from "./config.ts";
 import { buildClassNameDictionary } from "./class-names.ts";
-import { readDzIndex } from "./dz.ts";
+import { readDzIndex, readGroups } from "./dz.ts";
 import { exportKino } from "./kino-export.ts";
-import { buildReport, readGroups, renderReportHtml } from "./report.ts";
+import { buildReport, renderReportHtml } from "./report.ts";
 import { isKinoEntry } from "./selection.ts";
 import { unpackEntries } from "./unpack.ts";
 

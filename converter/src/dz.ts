@@ -97,3 +97,16 @@ export function readDzIndex(dzPath: string): DzIndex {
     throw e;
   }
 }
+
+export type GroupInput = { entry: DzEntry; data: Buffer | Error };
+
+/** Reads each entry; a read failure is kept as an Error so callers can record it. */
+export function readGroups(fd: number, entries: DzEntry[]): GroupInput[] {
+  return entries.map((entry) => {
+    try {
+      return { entry, data: readDzEntry(fd, entry) };
+    } catch (e) {
+      return { entry, data: e as Error };
+    }
+  });
+}

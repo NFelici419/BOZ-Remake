@@ -1,23 +1,10 @@
 import { classHash, describeClass } from "./class-names.ts";
-import { readDzEntry, type DzEntry } from "./dz.ts";
+import type { GroupInput } from "./dz.ts";
 import { parseGroup } from "./group.ts";
 import { decodeMaterial } from "./material.ts";
 import { decodeModel } from "./model.ts";
 import { listResources, resourceBytes } from "./resources.ts";
 import { decodeTexture } from "./texture.ts";
-
-export type GroupInput = { entry: DzEntry; data: Buffer | Error };
-
-/** Reads each entry; a read failure is kept as an Error so the report can record it. */
-export function readGroups(fd: number, entries: DzEntry[]): GroupInput[] {
-  return entries.map((entry) => {
-    try {
-      return { entry, data: readDzEntry(fd, entry) };
-    } catch (e) {
-      return { entry, data: e as Error };
-    }
-  });
-}
 
 export type GroupReport = {
   path: string;

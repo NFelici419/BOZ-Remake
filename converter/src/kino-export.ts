@@ -1,13 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { classHash } from "./class-names.ts";
-import { readDzIndex } from "./dz.ts";
+import { readDzIndex, readGroups } from "./dz.ts";
 import { entityTransform, parseEntitySpec, type Transform } from "./entity.ts";
 import { GltfBuilder, type GltfNode } from "./gltf.ts";
 import { decodeMaterial, type Material } from "./material.ts";
 import { decodeModel, type Model } from "./model.ts";
 import { encodePng } from "./png.ts";
-import { readGroups } from "./report.ts";
 import { listResources, resourceBytes, type ResourceRef } from "./resources.ts";
 import { isKinoEntry } from "./selection.ts";
 import { decodeTexture } from "./texture.ts";
