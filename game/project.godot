@@ -1,0 +1,35 @@
+; Engine configuration file.
+; Edit through the Godot editor where possible; keys here are kept minimal.
+
+config_version=5
+
+[application]
+
+config/name="BOZ Remake"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/handheld/orientation=0
+window/stretch/mode="canvas_items"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/kino_import/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+
+[importer_defaults]
+
+texture={
+"compress/mode": 2,
+"mipmaps/generate": true,
+"detect_3d/compress_to": 0
+}
