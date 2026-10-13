@@ -29,6 +29,10 @@ test("decodes lightmap uvs and skips unconsumed blocks", () => {
   assert.deepEqual(m.meshes.map((x) => x.materialIndex), [1, 0]);
 });
 
+test("rejects triangle list whose index count is not a multiple of 3", () => {
+  assert.throws(() => decodeModel(model([verts(QUAD, 0, []), triList(0, [0, 1, 2, 0])], [1])), (e) => e instanceof FormatError && /4 indices/.test(e.message));
+});
+
 test("rejects out-of-range index", () => {
   assert.throws(() => decodeModel(model([verts(QUAD, 0, [0]), triList(0, [0, 1, 4])], [1])), (e) => e instanceof FormatError && /index 4/.test(e.message));
 });

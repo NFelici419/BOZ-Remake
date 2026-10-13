@@ -71,6 +71,7 @@ export function decodeDxt(data: Buffer, width: number, height: number, format: 0
 }
 
 function decodeRgba4444(res: Buffer, width: number, height: number, pitch: number): Buffer {
+  if (pitch < width * 2) throw new FormatError(`pitch ${pitch} is narrower than ${width} 16-bit pixels`, 25);
   if (res.length !== HEADER + pitch * height + 1) throw new FormatError(`raw texture is ${res.length} bytes, expected ${HEADER + pitch * height + 1}`, 0);
   const out = Buffer.alloc(width * height * 4);
   for (let y = 0; y < height; y++) {

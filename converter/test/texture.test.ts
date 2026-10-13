@@ -98,6 +98,11 @@ test("unsupported raw and gl formats reported", () => {
   assert.match(gl.kind === "unsupported" ? gl.reason : "", /0x8c00/);
 });
 
+test("rejects raw pitch narrower than a row", () => {
+  const t = texture({ format: 0x06, b18: 5, width: 4, height: 2, pitch: 4, recordSize: 0, payload: Buffer.alloc(8) });
+  assert.throws(() => decodeTexture(t), (e) => e instanceof FormatError && /pitch 4/.test(e.message));
+});
+
 test("rejects truncated texture", () => {
   assert.throws(() => decodeTexture(Buffer.alloc(12)), (e) => e instanceof FormatError && /12 bytes/.test(e.message));
 });

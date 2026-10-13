@@ -79,6 +79,7 @@ export function decodeModel(res: Buffer): Model {
       if (!positions) throw new FormatError("block before the Verts block", p);
       if (h === TRILIST) {
         const count = res.readUInt16LE(p + 10);
+        if (count % 3 !== 0) throw new FormatError(`triangle list has ${count} indices`, p + 10);
         end = p + 22 + 2 * count;
         need(p, end, "GLTriList");
         const indices = new Uint16Array(count);
