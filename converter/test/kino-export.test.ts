@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { classHash } from "../src/class-names.ts";
 import { exportKino, nodePlacement } from "../src/kino-export.ts";
-import { component, cubemapTexture, entity, material, model, rgba4444Texture, texture, transform, triList, uvs, verts } from "./fixtures.ts";
+import { component, cubemapTexture, entity, f32, field, material, model, rgba4444Texture, texture, transform, triList, uvs, verts } from "./fixtures.ts";
 import { assertValidGltf } from "./gltf-check.ts";
 import { buildDz, buildGroup, realSource, tempDir } from "./helpers.ts";
 
@@ -73,9 +73,15 @@ function syntheticArchive(): string {
   });
   const dynamics = buildGroup({ name: "kino_dynamics", flags: 0, lists: [{ classHash: classHash("CIwModel"), resources: [body(model([verts(QUAD, 0, []), triList(0, [0, 1, 2])], [1]))] }] });
   const sky = buildGroup({ name: "kino_skyboxes_shared", flags: 0, lists: [{ classHash: classHash("CIwTexture"), resources: [body(cubemapTexture([0xf800, 0x07e0, 0x001f, 0xffff, 0xf81f, 0x0000]))], nameHashes: [0x5c1] }] });
+  const player = entity(0, [
+    component("CPlayerController", [field("CPlayerController", "float", "m_StandHeight", f32(150)), field("CPlayerController", "float", "m_CrouchHeight", f32(75))]),
+    component("CIsCollisionCapsule", [field("CIsCollisionCapsule", "float", "m_radius", f32(30)), field("CIsCollisionCapsule", "float", "m_height", f32(200))]),
+  ]);
+  const ingame = buildGroup({ name: "ingame", flags: 0, lists: [{ classHash: classHash("CIsEntitySpec"), resources: [body(entity(0, [component("CIsNamed", [])])), body(player)], nameHashes: [0x9a, 0x9b] }] });
   const dir = tempDir();
   const dzPath = path.join(dir, "kino.dz");
   fs.writeFileSync(dzPath, buildDz([
+    { name: "ingame.group.bin", dir: "ingame", data: ingame },
     { name: "kino_skyboxes_shared.group.bin", dir: "levels\\kino", data: sky },
     { name: "kino_dynamics.group.bin", dir: "levels\\kino", data: dynamics },
     { name: "room_shared.group.bin", dir: "levels\\kino", data: room },
@@ -119,6 +125,13 @@ test("synthetic export", () => {
   assert.deepEqual(sky.faces, ["px.png", "nx.png", "py.png", "ny.png", "pz.png", "nz.png"]);
   assert.equal(sky.source, "levels/kino/kino_skyboxes_shared.group.bin CIwTexture#0");
   for (const f of sky.faces) assert.ok(fs.existsSync(path.join(outDir, "kino/sky", f)), f);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(outDir, "kino/player.json"), "utf8")), {
+    standHeight: 1.5,
+    crouchHeight: 0.75,
+    capsuleRadius: 0.3,
+    capsuleHeight: 2,
+    source: "ingame/ingame.group.bin CIsEntitySpec#1",
+  });
   const png = fs.readFileSync(path.join(outDir, "kino/textures/room_shared_0.png"));
   assert.equal(png.toString("latin1", 1, 4), "PNG");
   assert.deepEqual(fs.readdirSync(path.join(outDir, "kino/textures")), ["room_shared_0.png"]);
@@ -151,6 +164,7 @@ test("real export", (t) => {
   assert.equal(real.stats.placed, 349);
   assert.deepEqual(real.stats.unplaced, ["atriumupstairs_shared#3", "atriumupstairs_shared#4"]);
   assert.deepEqual(real.stats.failed, []);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(real.dir, "kino/player.json"), "utf8")).standHeight, 1.5);
   const { doc, bin } = readExport(real.dir);
   assert.equal(doc.nodes.length, 349);
   const alley = doc.nodes.find((n: { name: string }) => n.name === "alley_shared#0");

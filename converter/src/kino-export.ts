@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { classHash } from "./class-names.ts";
 import { readDzIndex, readGroups } from "./dz.ts";
-import { entityTransform, parseEntitySpec, type Transform } from "./entity.ts";
+import { entityTransform, parseEntitySpec, type EntitySpec, type Transform } from "./entity.ts";
 import { GltfBuilder, type GltfNode } from "./gltf.ts";
 import { decodeMaterial, type Material } from "./material.ts";
 import { decodeModel, type Model } from "./model.ts";
@@ -79,6 +79,49 @@ function exportSky(groups: Group[], dir: string, failed: string[]): number {
     }
   }
   return 0;
+}
+
+/** Game-unit player dimensions read from the player template entity (CPlayerController + CIsCollisionCapsule). */
+const PLAYER_FIELDS = {
+  standHeight: ["CPlayerController", "m_StandHeight"],
+  crouchHeight: ["CPlayerController", "m_CrouchHeight"],
+  capsuleRadius: ["CIsCollisionCapsule", "m_radius"],
+  capsuleHeight: ["CIsCollisionCapsule", "m_height"],
+} as const;
+
+function floatField(e: EntitySpec, component: string, name: string): number | null {
+  const f = e.components.find((c) => c.classHash === classHash(component))?.fields.find((x) => x.nameHash === classHash(name));
+  return f && f.data.length === 4 ? f.data.readFloatLE(0) : null;
+}
+
+/** Writes player.json (metres) from the first entity with a CPlayerController; returns false when none is found. */
+function exportPlayer(groups: Group[], file: string, failed: string[]): boolean {
+  for (const group of groups) {
+    for (const ref of group.refs) {
+      if (ref.classHash !== ENTITY) continue;
+      let e: EntitySpec;
+      try {
+        e = parseEntitySpec(resourceBytes(group.data, ref));
+      } catch {
+        continue; // room entities report their own failures; others are not needed here
+      }
+      if (!e.components.some((c) => c.classHash === classHash("CPlayerController"))) continue;
+      const out: Record<string, number | string> = {};
+      for (const [key, [component, name]] of Object.entries(PLAYER_FIELDS)) {
+        const v = floatField(e, component, name);
+        if (v === null) {
+          failed.push(`${group.base} CIsEntitySpec#${ref.index}: no ${component}.${name}`);
+          return false;
+        }
+        out[key] = Number((v * POSITION_SCALE).toFixed(4));
+      }
+      out.source = `${group.path} CIsEntitySpec#${ref.index}`;
+      fs.writeFileSync(file, JSON.stringify(out, null, 2) + "\n");
+      return true;
+    }
+  }
+  failed.push("no entity with a CPlayerController");
+  return false;
 }
 
 function loadGroups(dzPath: string, failed: string[]): Group[] {
@@ -240,6 +283,7 @@ export function exportKino(dzPath: string, outDir: string): ExportStats {
   }
 
   stats.skyFaces = exportSky(groups, path.join(out, "sky"), stats.failed);
+  exportPlayer(groups, path.join(out, "player.json"), stats.failed);
   stats.missingMaterials = missing.size;
   stats.missingTextures = noBaseTexture.size;
   const { json, bin } = gltf.toFiles("kino");
