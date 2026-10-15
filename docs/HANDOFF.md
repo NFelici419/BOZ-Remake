@@ -1,9 +1,9 @@
 # BOZ Remake: Session Handoff
 
-**Last updated:** 2026-10-12
+**Last updated:** 2026-10-15
 **Repo:** https://github.com/NFelici419/BOZ-Remake (local: `D:\Documents\BOZ-Remake`, default branch `master`)
 
-Read this first, then the spec and the current plan linked below.
+Read this first. The design spec and the milestone documents are linked below.
 
 ---
 
@@ -11,20 +11,15 @@ Read this first, then the spec and the current plan linked below.
 
 A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mobile, Marmalade engine) in **Godot 4**, rebuilt from the original game's own data. It is not for distribution.
 
-- **Why a remake:** the original game logic only exists as 32-bit ARM code inside `boz.s3e`. Marmalade's 64-bit loader needs a separate `*_aarch64.s3e` that was never built, so a 64-bit port isn't possible. (Investigated with REA/string evidence; details in spec §9.)
-- **Agreed scope** (from the owner):
-  - **Kino der Toten only** to start, "done properly": full round loop, doors, box, perks, power, teleporter, Pack-a-Punch, HUD and menus.
-  - **Target device: Retroid Pocket 6** (Android, Snapdragon 8 Gen 2), with **native controller support**.
-  - **Faithful to the mobile original by default**, with options.
-  - **Solo only** for now; code structured so co-op can be added later.
-  - Assets are **converted from the original files by our own tool**, never hand-recreated.
+- **Why a remake:** the original game logic only exists as 32-bit ARM code inside `boz.s3e`, and a 64-bit port isn't possible (spec §9).
+- **Agreed scope:** Kino der Toten only, "done properly" (full round loop, doors, box, perks, power, teleporter, Pack-a-Punch, HUD, menus); **Retroid Pocket 6** with native controller; **faithful to the mobile original by default**; solo only (co-op-ready structure); assets **converted by our own tool**, never hand-recreated.
+- **The owner asked for the full game** ("make the full game now") and to **build directly without writing plans**. Work milestone by milestone, keep it playable on the Retroid after each step, and give progress updates.
 
-**Authoritative documents:**
-- Design spec: [`docs/superpowers/specs/2026-10-11-boz-remake-design.md`](superpowers/specs/2026-10-11-boz-remake-design.md)
-- Milestone 1 plan (done): [`docs/superpowers/plans/2026-10-11-m1-converter-basics.md`](superpowers/plans/2026-10-11-m1-converter-basics.md)
-- Milestone 2a plan (done, PR open): [`docs/superpowers/plans/2026-10-12-m2a-kino-geometry-export.md`](superpowers/plans/2026-10-12-m2a-kino-geometry-export.md)
-- Milestone 2b design: [`docs/superpowers/specs/2026-10-12-m2b-godot-walkaround-design.md`](superpowers/specs/2026-10-12-m2b-godot-walkaround-design.md) (the owner asked to build 2b directly, without a plan document).
-- **2b playtest checklist:** [`docs/playtest/2b-walkaround.md`](playtest/2b-walkaround.md)
+**Documents:**
+- Design spec: [`docs/superpowers/specs/2026-10-11-boz-remake-design.md`](superpowers/specs/2026-10-11-boz-remake-design.md) (milestones in §10)
+- Milestone 1 and 2a plans (done): [`plans/`](superpowers/plans/)
+- Milestone 2b design: [`specs/2026-10-12-m2b-godot-walkaround-design.md`](superpowers/specs/2026-10-12-m2b-godot-walkaround-design.md)
+- Playtest checklist (2b): [`docs/playtest/2b-walkaround.md`](playtest/2b-walkaround.md)
 
 ---
 
@@ -32,12 +27,20 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 
 | Milestone | State |
 |---|---|
-| 1. Converter basics (unpack `.dz`, parse groups, coverage report) | **Done.** Merged to `master` as PR #1. 34 tests passing. |
-| 2a. Kino geometry export → glTF | **Done** on branch `m2a-kino-geometry-export`, PR open against `master` (merge pending). 95 tests passing. `export-kino` writes 349/351 placed room models, 75,249 triangles, 169 textures, 0 failures. |
-| 2b. Godot project + controller walk-around + Retroid build | **Built, not yet on the device.** Branch `m2b-godot-walkaround` (stacked on 2a, not pushed). Kino renders in Godot 4.7.2 with the original shader, collision, sky and gamepad player; debug APK builds (34 MB). Remaining: install on the Retroid and run the playtest checklist. |
-| 3–6. Core combat, economy, Kino features, polish | Not started (see spec §10). |
+| 1. Converter basics | **Done**, merged (PR #1). |
+| 2a. Kino geometry → glTF | **Done**, pushed as `m2a-kino-geometry-export`. **PR not opened/merged yet** (owner does it from the compare URL). |
+| 2b. Godot walk-around on the Retroid | **Done and verified on the device:** 60 fps in the lobby, original shader look, controls work. `MIRROR_X = false` confirmed (graffiti reads correctly). Owner hasn't run the side-by-side checklist yet. |
+| 3. Core combat | **Done** (on the PC and the device): wave chains from the data, zombies (placeholder bodies), M1911 + knife, points, health/regen, HUD, pause, game over. |
+| 4. Economy | **Done on the PC, not yet installed on the Retroid** (adb said "unauthorized"; owner must tick "Always allow"): doors, barricades, wall-buys, two weapon slots. |
+| 5. Kino features | **Next:** power, perks, Mystery Box, Pack-a-Punch, teleporter, power-ups, hellhound rounds, traps. |
+| 6. Polish / real assets | Not started: zombie and weapon models + animations, sound, menus, settings. |
 
-**Pending from the owner:** merge the 2a PR. Its final review was a self-review (no fresh reviewer agent was dispatched); the owner can ask for an independent review before merging.
+### Git state (important)
+
+- `origin/master` = `20699e6`. Local `master` has one unpushed commit (`fbddd5a`, the first handoff doc), which is also on the feature branches.
+- `origin/m2a-kino-geometry-export` = `ea477cb` (pushed).
+- **`m2b-godot-walkaround` is local only:** 8 commits on top of `ea477cb` (2b spec, converter extras, Godot project, combat, economy, docs). **It isn't backed up on GitHub. Ask the owner before pushing.**
+- Repo-local identity `Nelson` / `197873008+NFelici419@users.noreply.github.com`. There's no `gh`; the owner opens PRs from compare URLs.
 
 ---
 
@@ -45,22 +48,35 @@ A **personal-preservation remake** of *Call of Duty: Black Ops Zombies* (2012 mo
 
 | What | Path |
 |---|---|
-| Project repo | `D:\Documents\BOZ-Remake` |
-| Converter (TypeScript, Node 24) | `D:\Documents\BOZ-Remake\converter` |
-| Converter output (gitignored) | `converter/out/`: `unpacked/`, `manifest.json`, `report.json`, `report.html`, `preview/` (one-off check renders) |
-| Godot project | `game/` (Godot 4.7.2, Mobile renderer). Converted assets (gitignored): `game/assets/converted/kino/` (`kino.gltf`, `kino.bin`, `textures/`, `sky/`, `player.json`) |
+| Converter (TypeScript, Node 24, 107 tests) | `converter/` |
+| Godot project (4.7.2, Mobile renderer) | `game/` |
+| Converted assets (gitignored, regenerable) | `game/assets/converted/kino/`: `kino.gltf/.bin` (rooms), `dynamics.gltf/.bin` (174 prop models named by hash), `textures/`, `sky/` (6 faces + `sky.json`), `player.json`, `data/entities.json` (all 1,070 entities, decoded), `data/resources.json` (433 reflected resources: waves, zombies, level, areas, scores …), `navmesh.res` + `navsource.res` |
 | APK + build logs (gitignored) | `build/` |
-| Local config (gitignored) | `converter/local.json` (copy of `local.example.json`) |
-| **Original game data (read-only, never commit)** | `D:\Documents\COD-BOZ-Partially-Decompiled-master\retroid-backup\` |
-| → primary data pack (PC-ready DXT textures) | `blackops_dxt.dz` (341,884,481 bytes) |
-| → same pack as on the Retroid | `blackops_atitc.dz` (342,388,603 bytes) |
-| → original APK pulled from the Retroid | `com.activision.boz-1.0.8.apk` |
-| Decompressed game binary (class names, code) | `D:\Documents\COD-BOZ-Partially-Decompiled-master\COD-BOZ-Partially-Decompiled-master\buildtools\boz\decompressed.s3e` |
-| Fan decompilation repo (reference only) | `D:\Documents\COD-BOZ-Partially-Decompiled-master\COD-BOZ-Partially-Decompiled-master` |
+| Local config (gitignored) | `converter/local.json` |
+| **Original data (read-only, never commit)** | `D:\Documents\COD-BOZ-Partially-Decompiled-master\retroid-backup\` (`blackops_dxt.dz` is the primary source) |
+| Decompressed game binary | `D:\Documents\COD-BOZ-Partially-Decompiled-master\COD-BOZ-Partially-Decompiled-master\buildtools\boz\decompressed.s3e` |
 | Ghidra project of the game code | `C:\Users\Nelson\Tools\ghidra-projects\boz` |
-| Research probe scripts (gitignored) | `D:\Documents\BOZ-Remake\.scratch\` (`probe.mjs`, `decodemodel.mjs`, `assemble.mjs`, `decomp.sh`, …) |
+| Research scripts (gitignored) | `.scratch\` (`decomp.sh <out> <addr>…`, `callers.sh <out> <addr>` = decompile all callers; scripts in `.scratch\ghidra\scripts\`) |
 
-The data packs were downloaded from Activision's still-live CDN: `http://cdn-boz-android.callofduty.com/PROD/CODBOZ/1_0_8/` (also `blackops_etc.dz`, `blackops_gles1.dz`). The Retroid's own copy can't be read: it's app-private, and the device isn't rooted.
+### Game code map (`game/`)
+
+| File | Role |
+|---|---|
+| `scenes/main.gd` | Builds everything: Kino scene, sky, navigation, player, weapon, HUD, round director, interactables; Start pause/restart; input actions. |
+| `scripts/kino_data.gd` (autoload `KinoData`) | Loads `data/*.json`; `world()` unit conversion; lookups: `wave()`, `weapon()`, `score()`, `score_limit()`, `entities_with()`, templates. |
+| `scripts/game_state.gd` (autoload `GameState`) | Points per player id, spending, capped awards, round number, open areas, game over. |
+| `rounds/round_director.gd` | Wave chain by difficulty, spawning in open areas, window/ground/hole spawns. |
+| `zombies/zombie.gd` | Placeholder body, hit zones, gaits, window states (outside → tear → climb → chase), attacks. |
+| `weapons/weapon.gd` | Two gun slots + knife; fire modes from data; reload; falloff. |
+| `interactables/` | `Interactable` base (hold-West use), `Door`, `Barricade`, `WallBuy`, `Props` (instances `dynamics.gltf` meshes by hash). |
+| `world/nav_baker.gd`, `world/navmesh_settings.gd` | Navmesh with closed doors carved out; async re-bake when a door opens. |
+| `player/player.gd`, `player/stick.gd` | Movement, health/regen, hold-West interaction, hold-Select rescue teleport. |
+| `ui/hud.gd`, `debug/overlay.gd`, `debug/capture.gd` | HUD and prompts; FPS overlay; developer command-line options (below). |
+| `addons/kino_import/` | Import add-on: original room shader + trimesh collision on `kino.gltf`. |
+| `shaders/` | Room shader (vertex colour × texture × lightmap, unshaded), cut-out variant, sky. |
+| `data/approximations.json` | **Every value not found in the data yet** (see §6). `data/settings.json`: dead zones, difficulty. |
+| `tools/build-android.sh`, `tools/bake_navmesh.gd` | Full build and install; navmesh bake. |
+| `tests/run.gd` | Headless checks (stick maths, imported scene). |
 
 ---
 
@@ -68,106 +84,98 @@ The data packs were downloaded from Activision's still-live CDN: `http://cdn-boz
 
 ```bash
 cd /d/Documents/BOZ-Remake/converter
-npm install
-npm test               # 95 tests; real-data tests run when local.json exists
+npm test                         # 107 tests
 npm run typecheck
-npm run boz -- unpack  # Kino files -> out/unpacked (47 entries)
-npm run boz -- report  # out/report.json + out/report.html (46 groups, 0 failed; 4102 decoded, 5 weapon models fail)
-npm run boz -- export-kino  # ../game/assets/converted/kino/
+npm run boz -- export-kino       # rooms, props, textures, sky, player.json -> game/assets/converted/kino/
+npm run boz -- export-data       # entities.json + resources.json (run AFTER export-kino, which clears the folder)
+npm run boz -- report            # coverage report in converter/out/
 ```
-
-Game (from the repo root):
 
 ```bash
-game/tools/build-android.sh               # export-kino, Godot import, headless tests, APK, adb install + launch + logcat
-game/tools/build-android.sh --no-install  # stop after the APK
+sh game/tools/build-android.sh               # both exports, Godot import, navmesh bake, tests, APK, install, launch, logcat
+sh game/tools/build-android.sh --no-convert --no-install
 ```
 
-On the PC: `Godot_v4.7.2-stable_win64.exe --path game` runs the game (gamepad); add `-e` to open the editor. Developer screenshots: `... --path game -- --at=x,y,z,yaw,pitch --screenshot=out.png`.
+PC: `C:\Users\Nelson\Tools\godot\Godot_v4.7.2-stable_win64.exe --path game` (add `-e` for the editor). Use `..._console.exe` for logs.
+
+**Developer options** (after `--`): `--at=x,y,z[,yaw,pitch]` (metres/degrees), `--screenshot=file.png`, `--wait=seconds`, `--bot` (aims at the nearest visible zombie's head and fires), `--points=N`, `--open=DoorName` (e.g. `Lobby_To_Atrium`), `--give=weapon` (e.g. `mp40`). Example:
+`Godot..._console.exe --path game -- --bot --points=2000 --open=Lobby_To_Atrium --screenshot=C:/tmp/x.png --wait=60`
+
+**Controls:** left stick move, right stick look, L3 sprint, R3 knife, R2 fire, South jump, East crouch (hold), West tap = reload / hold = use (buy, open, repair), North switch weapon, Start pause (Select quits while paused), Select tap = FPS overlay, **hold Select 1.5 s = back to the start point** (rescue if stuck).
 
 ---
 
 ## 5. Key technical findings (all verified)
 
-Full detail with byte offsets is in the 2a plan's **"Format facts"** section. In brief:
+**Archive and resources.** `.dz` is a DTRZ archive of stored chunks. `.group.bin` records are `{u32 classHash, u32 size, payload}`. Class hash = djb2 of the lowercased name; names come from strings in the game binary, plus generated candidates (`wave1..300`, weapon names, `hole`). Resource lists: `classHash, count, u8, u8`, then resources starting `u32 size, u32 nameHash`.
 
-- **`.dz` (DTRZ):** a single archive file; all 189 chunks are stored uncompressed (flag `0x100`) and packed contiguously.
-- **`.group.bin`:**
-  - Records are `{u32 classHash, u32 size (incl. itself), payload}`, ending in `u32 0`.
-  - Class hash = **djb2 over the lowercased class name**. Names are recovered by hashing every string in `decompressed.s3e`.
-- **Resource lists:** `classHash, count, u8, u8`, then resources that each start with `u32 size` and `u32 nameHash`.
-- **Textures:** DXT1/DXT3 GL records with a fixed 12-slot mip table (data at record + 72), or raw RGBA4444. The skybox is a cubemap.
-- **Materials:** layout depends on size (17/59/65 bytes). Texture references are name hashes; texture1 is the room **lightmap**.
-- **Models:**
-  - Blocks are found by a repeated class-hash pair.
-  - **Vertex positions are compressed** (read from game code: loader `0x242f48`, decompressor `0x258774`): a packed count, a shared center, X/Y/Z planes of s16, then u16 remap indices for duplicated vertices.
-  - UVs are s16 / 4096. Triangle lists carry a material index.
-  - All 665 Kino models decode byte-exactly.
-- **Placement:** `CIsEntitySpec` is self-describing reflection data (`"LFER"` blocks with typed, named fields). `CIsTransform.m_localPosition` / `m_localRotation` place each room; entity name hash == model name hash. 349/351 room models are placed, and the assembled map forms a coherent floor plan.
-- **Axes:** +Y is up (confirmed by a side render of the export). **Provisional** (confirm by eye in 2b): `POSITION_SCALE = 0.01` (map ≈ 135 × 156 m, 37 m tall), `MIRROR_X = false`. Both are single constants in `converter/src/kino-export.ts`.
-- **Learned while building 2a** (corrections to the plan's format facts):
-  - **Entity components** all share a 16-byte header `specClass, ?, componentClass, size`. Only `CIsComponentSpec` blocks are LFER field lists; `kino_statics` CIsEntitySpec#0 has a `CIsCollisionMeshSpec` followed by a ~6 MB Bullet physics blob (future collision source). 728 entities have a transform (725 unique names).
-  - **Cubemaps:** the outer GL header's mip table describes one face; `recordSize = 72 + 6 × (72 + Σmips)`, each face its own 72-byte GL record. Unused mip-table slots hold junk that looks like pixels.
-  - **Textures:** 859 decode, 1 cubemap, 26 unsupported (format byte 0x00 ×6, 0x1b ×1, raw byte18 0x0e ×19).
-  - **Weapon models:** 5 `weapons_kino` CIwModels (#3, #5, #6, #239, #242) have a different tail after the last block. Investigate in the weapons milestone.
-- **Useful classes for later milestones** (all present in Kino's data): `CZombieConfiguration`, `CWave`, `CScoreConfig`, `CLevel`, `CArea`, `CIsNavMesh`, `CTeleportSpawnConfig`, `CIsPortal`/`CIsOccluder`, `CIwAnim`/`CIwAnimSkel`/`CIwAnimSkin`, `CIwSoundData`.
+**Geometry (2a, details in the 2a plan).** Textures are DXT1/DXT3 with a 12-slot mip table (data at +72) or raw RGBA4444; cubemap = outer header + 6 face records. Materials come in three sizes (17/59/65 bytes); texture1 is the lightmap. Models have compressed planar positions, UVs /4096, triangle lists and a material list; **vertex colours** (`Cols`, from game code at `0x24220c`) are a flag byte, then a grey byte per vertex (bit 0) or R, G, B, A byte planes. All 665 Kino models decode. Placement is `CIsTransform` of the entity with the model's name. Scale 0.01 (game unit = cm); +Y up; not mirrored.
+
+**Look.** The original room shader (GLSL inside `ingame/shaders/shaders.group.bin`) is `vertexColour × texture(UV0) × lightmap(UV1)`, then fog; overbright is disabled. Reproduced unshaded in Godot. Vertex colours arrive as raw gamma bytes and are linearised in the shader.
+
+**Reflection data ("LFER") — the key to gameplay.** `converter/src/reflect.ts` decodes it generically: block `"LFER", class, declaredSize, fieldCount`, then fields `owner, type, 1, name, 1, size, data`. **Read fields by count**: some blocks repeat a field while the declared size omits it. Values are decoded by type name: numbers, vectors, `std::string` (NUL-terminated), `std::list/vector<T>` (count + items), nested structs and enums. A resource's name is the u32 before the block's size word.
+
+**Gameplay data found (all in `data/*.json`):**
+- `CLevel`: `m_StartingArea`, `m_StartingWavesSP` (three chains = easy/normal/hard; normal starts 6 zombies/150 hp), `m_PerksAvailable [1,2,5,6]`, `MysteryBoxAvoid`, 8 zombie configurations.
+- `CWave` chain (`m_NextWave`), then `CWaveRepeatable` (multipliers, health ×1.1 per round); `CWaveSpeciality` = hellhound rounds.
+- `CArea` ×9, each listing its spawn points. `CSpawnPoint.spawnType`: `windows`, `ground`, `hole` (ceiling crawlers), plus an unrecovered type = hellhounds.
+- `CScoreConfig`: hit 10, kill head 100 / torso 60 / limb 50 / knife 130, barricade 10 (capped 50/round), carpenter 200, nuke 400.
+- Zombie template (`zombie_kino`): damage 115, attack radius 220, gait speed modifiers, hit zones (`CRigCollision`). Player template: health 230, regen delay 1 s / time 7 s, stand 150 / crouch 75.
+- `CPlayerWeapon` ×65: clip/ammo, damage by zone, `behaviour` (1 semi, 2 auto, 3 burst + `semiBurst`, 4 shotgun, 9 projectile), RPM in field `0x47ee2045`, `m_falloff`, `m_ADSFoV`, `Upgrade` (Pack-a-Punch version), chalk UVs `m_uv0/m_uv1`. 28 names are still hashes (probably the upgraded weapons).
+- Placed level entities: 12 doors (`CDoor` cost + `m_AreasUnlock`, collision box; two need power), 22 barricades (5 boards), 12 wall-buys (`CWeaponChalkOutline` cost; weapon from the `CIsNamed` prefix), 9 Mystery Box spots, 4 perks, power switch, Pack-a-Punch, teleporter + mainframe, traps, 66 spawns. Display names are in `CIsNamed` field `0x7c9b0c46`.
+
+**Still undecoded:** skinned models (`CIwAnimSkin`/`CIwAnimSkel`/`CIwAnim`, 1,357 anims), `CIwSoundData` (578), `CIsNavMesh` (we bake our own from collision for now), the original collision (Bullet blob in kino_statics entity #0), UI (`CIwUIElement`, fonts), 5 `weapons_kino` models with a different tail, 26 textures in unsupported formats.
 
 ---
 
-## 6. Environment (owner's PC)
+## 6. Approximations in use (`game/data/approximations.json`)
 
-- **OS:** Windows 11 IoT Enterprise LTSC. **No winget.**
-- **Installed this session:**
-  - Node.js 24.21 (`C:\Program Files\nodejs`)
-  - Temurin JDK 21 (`C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`)
-  - Ghidra 12.1.4 (`C:\Users\Nelson\Tools\ghidra_12.1.4_PUBLIC`)
-  - REA 6.4.0 (global npm install, registered for Claude Code and Claude Desktop)
-- **Already present:** Android SDK at `%LOCALAPPDATA%\Android\Sdk` (adb, emulator, build-tools 35/36/37, platform 36/37), Git 2.55.
-  - Godot 4.7.2 (`C:UsersNelsonToolsgodot`, editor + `_console.exe`); Android export templates in `%APPDATA%Godotexport_templates.7.2.stable` (Android files only). Godot found the JDK and SDK itself and made its own debug keystore.
-- **Not installed:** Python, `gh` CLI, .NET SDK.
-- **Retroid Pocket 6:** reachable over USB via `adb` (serial `cc7436ad`). The original BOZ 1.0.8 is installed on it and supports armeabi-v7a.
+Walk speed 4 m/s, sprint ×1.5, jump 4 m/s, start position = player template position, start points 500, zombie base speeds per gait [1.0, 1.6, 3.0, 4.6] m/s, attack interval 1.2 s and half the data's attack radius, semi-auto fire interval 0.15 s, shotgun 0.6 s / 8 pellets, reload 1.7 s, knife cooldown 0.6 s, 1.5 s per board torn, 0.8 s per board repaired. Replace each with data when found (fire rates and speeds probably live in the animations).
 
 ---
 
-## 7. Gotchas learned the hard way
+## 7. Environment (owner's PC)
 
-- **REA on Windows:** its Ghidra provider only accepts PE (Windows) files, so it can't open Android ARM ELF libraries or the game image. Run Ghidra directly instead (next point).
-- **Ghidra headless:**
-  - The project path must not contain a folder starting with `.` (e.g. `.scratch`), or it aborts.
-  - It then waits on "Press any key" forever. Always redirect stdin: `< /dev/null`.
-  - Use `.scratch/decomp.sh <out.txt> <addr>...` to decompile functions from the saved project.
-- **The game image:**
-  - It is `decompressed.s3e` bytes `0x39483 .. 0x456df3`, loaded at 0. The code is **ARM mode** (32-bit instructions).
-  - String addresses are computed as literal + PC.
-  - Vtable entries are absolute addresses with runtime base **`0x4A000000`**.
-  - A class's constructor sits **before** its size function in the registry at `FUN_0023d188`.
-- **Node on Windows:** `node --test test/` doesn't accept a bare directory, so use the glob in `package.json`. Bitwise ops are signed, so use `>>> 0` when comparing u32 values.
-- **Git:**
-  - Repo-local identity is `Nelson` / `197873008+NFelici419@users.noreply.github.com`. Keep the owner's personal email out of history.
-  - Pushes use Git Credential Manager (browser sign-in).
-  - There's no `gh`, so the owner opens and merges PRs from the compare URL themselves.
-- **Never write next to the original data files.** Never commit `.dz`, `.group.bin`, `.s3e`, `.apk`, `local.json` or `converter/out/`; `.gitignore` already covers these.
+- Windows 11 IoT Enterprise LTSC (no winget). Node 24.21, Temurin JDK 21, Git 2.55, Ghidra 12.1.4 (`C:\Users\Nelson\Tools\ghidra_12.1.4_PUBLIC`), REA 6.4.0.
+- **Godot 4.7.2:** `C:\Users\Nelson\Tools\godot\` (editor + `_console.exe`); Android export templates in `%APPDATA%\Godot\export_templates\4.7.2.stable\` (Android files only). Godot found the JDK/SDK itself and uses its own debug keystore.
+- Android SDK `%LOCALAPPDATA%\Android\Sdk` (build-tools 35/36/37).
+- Not installed: Python, `gh`, .NET.
+- **Retroid Pocket 6:** adb serial `cc7436ad`; the original BOZ is installed beside ours (`org.nfelici.bozremake`). Its built-in pad shows up as an "Xbox Series X Controller".
 
 ---
 
-## 8. Next steps
+## 8. Gotchas
 
-1. Owner merges the 2a PR (`m2a-kino-geometry-export` → `master`).
-2. **Finish 2b:** connect the Retroid, run `game/tools/build-android.sh`, go through `docs/playtest/2b-walkaround.md` against the original. Then push `m2b-godot-walkaround` and open its PR (after the 2a merge, so it shows only 2b).
-3. **Original 2b plan items, status:**
-   - Done: Godot installed; kino.gltf imported; first-person gamepad controller; Android APK export.
-   - Done: lightmaps via the original shader formula (found as GLSL in `ingame/shaders/shaders.group.bin`): vertex colour × texture × lightmap(UV2), unshaded, in a Godot import add-on.
-   - Done: vertex colours decoded from `CIwModelBlockCols` (read from game code at `0x24220c`: flag byte; bit 0 = one grey byte/vertex, else R/G/B/A byte planes; bit 2 = RGB565, unsupported, unused in Kino).
-   - Done: alpha cut-out (MASK) for materials whose texture has transparent texels (101 of 529). Material byte 11 hints at a blend flag but wasn't verified.
-   - Looks right on the PC: `MIRROR_X = false` (lobby graffiti reads correctly). Still to confirm on the device: `POSITION_SCALE`, brightness vs the original, FPS.
-   - Player dimensions come from the data (`player.json`: stand 1.5 m, crouch 0.75 m, capsule r 0.3 / h 2.0). Walk speed, jump, gravity and the start position are in `game/data/approximations.json`.
-   - Known gaps: player start position is the player template's position, not a confirmed spawn; spawn types decoded so far: "windows" ×26, "ground" ×4, "hole" ×12, one unknown ×24. Many gameplay entity classes are present for milestones 3–5 (CDoor ×43, CBarricade ×27, CMysteryBox ×12, CPerk ×11, CPowerSwitch, CPackAPunch, CTeleporter, CPlayerWeapon ×65 wall-buy chalk outlines …).
+- **adb "unauthorized"** after every adb daemon restart, until the owner ticks **"Always allow from this computer"** on the Retroid.
+- **Bash tool + heredocs:** a heredoc whose body contains an apostrophe can fail with "unexpected EOF". Put edit scripts in the scratchpad with the Write tool and run them with node; edit `.gd` files with Write/Edit. In JS template literals inside such scripts, `"\n"` and `\\` get mangled, so check the result.
+- **GDScript:** a type inferred from a Variant is an error (`var x: Type = …`); comparing a number with a String throws (use `str()`); the JSON stores unresolved hashes as numbers or `"0x…"` strings. Autoloads aren't loaded in `--script` mode.
+- **Zombies outside windows** must follow the navmesh path kinematically: the outside routes have navmesh but no floor collision, so physics makes them fall through the world.
+- **Godot headless import** applies `importer_defaults` (ETC2 + mipmaps) only to textures without an `.import` file; `export-kino` deletes the converted folder, so a fresh import picks them up.
+- **Ghidra headless:** no `.`-folders in the project path; always `< /dev/null`. REA can't open the ARM image, so use Ghidra directly. Image = `decompressed.s3e` bytes `0x39483..0x456df3`, ARM mode, vtable base `0x4A000000`.
+- **Node on Windows:** use the `package.json` test glob; `>>> 0` for u32 comparisons.
+- Never commit original data, `local.json`, `converter/out/`, `game/assets/converted/`, `build/`.
 
 ---
 
-## 9. Working style the owner has shown
+## 9. Next steps
 
-- Wants **progress updates** during long work, and plain-language explanations.
-- Approves big downloads and installs explicitly, and has been happy to say yes when given the exact file, source and size.
-- Chose **Native** execution for milestones 1 and 2a.
-- Interrupted once to redirect (cancelled the Android 11 emulator download and asked for a 64-bit port investigation instead). Check direction before long or expensive steps.
+1. **Owner:** tick "Always allow" on the Retroid, then run `sh game/tools/build-android.sh --no-convert` (or ask Claude) to install the economy build and playtest. Open and merge the 2a PR; decide when to push `m2b-godot-walkaround`.
+2. **Milestone 5 — Kino features** (all entities are placed in the data):
+   - **Power switch** (`CPowerSwitch`): opens `PowerOn_Door1` and `TheatreCurtains` (no-cost `CDoor`s), turns on perks, Pack-a-Punch and traps.
+   - **Perks** (`CPerk` ×4, `m_PerksAvailable [1,2,5,6]`, PerkType enum, perk-cola weapons `perkColaRed/Blue/Yellow/Green`): find costs and effects in the data; Juggernog changes health, Quick Revive matters in solo.
+   - **Mystery Box** (`CMysteryBox` ×9 spots, `MysteryBoxAvoid`): weapon pool, cost, teddy-bear move rule.
+   - **Pack-a-Punch** (`CPackAPunch`; weapon `Upgrade` → upgraded definitions; recover the 28 hashed names).
+   - **Teleporter** (`CTeleporter`, `CTeleportMainframe`, `CTeleportSpawnConfig`, `CTeleporterCable`).
+   - **Power-ups** (Max Ammo, Insta-Kill, Double Points, Nuke, Carpenter): drop rules not located yet.
+   - **Hellhound rounds** (`CWaveSpeciality`, hellhound spawn points), **traps** (`CTrapSwitch`/`CTrap`), **grenades/claymores/Bowie** wall-buys.
+3. **Milestone 6:** decode skinned models + animations (zombies, weapon viewmodels, doors/boards), sounds, HUD fonts/menus, settings; the original navmesh and collision; aim-down-sights (`m_ADSFoV`, L2).
+4. **Known issues:** 1 of the 8 lobby zombie spawns is still unused; collision from visible geometry can snag (the owner got stuck once, location unknown; hold-Select rescue added); the 2b side-by-side checklist (scale, brightness) isn't done yet.
+
+---
+
+## 10. Working style the owner has shown
+
+- Wants **progress updates** in plain language during long work, and **no plan documents**: build directly.
+- Approves downloads explicitly (give file, source and size).
+- Redirects mid-task when needed; check direction before very long or expensive steps.
+- Tests on the Retroid; screenshots via `adb exec-out screencap -p` help diagnose what they see.
